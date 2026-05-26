@@ -1,0 +1,12 @@
+{
+  "tool_trait\u2192approval_membrane": "No node matching 'tool_trait' found.",
+  "agent_loop\u2192memory_system": "warning: source match was ambiguous (top score 8.44592, runner-up 8.44592)\nNo path found between 'agent_loop' and 'memory_system'.",
+  "llm_provider\u2192streaming": "warning: target match was ambiguous (top score 474.329, runner-up 474.329)\nNo path found between 'llm_provider' and 'streaming'.",
+  "plugin_system\u2192tool_trait": "No node matching 'plugin_system' found.",
+  "migration_strategy\u2192cargo_workspace": "No path found between 'migration_strategy' and 'cargo_workspace'.",
+  "error_handling\u2192tool_execution": "warning: target match was ambiguous (top score 9.05232, runner-up 9.05232)\nNo path found between 'error_handling' and 'tool_execution'.",
+  "session_management\u2192sqlite": "No path found between 'session_management' and 'sqlite'.",
+  "subagent\u2192concurrency": "warning: source match was ambiguous (top score 456.184, runner-up 456.184)\nNo path found between 'subagent' and 'concurrency'.",
+  "gateway\u2192llm_provider": "No path found between 'gateway' and 'llm_provider'.",
+  "self_evolution\u2192agent_loop": "warning: source match was ambiguous (top score 9.48295, runner-up 9.48295)\nwarning: target match was ambiguous (top score 8.44592, runner-up 8.44592)\nNo path found between 'self_evolution' and 'agent_loop'."
+}
