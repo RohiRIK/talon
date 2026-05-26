@@ -26,7 +26,7 @@
 │                          ┌─────────▼──────────┐                         │
 │                          │   Agent Session    │                         │
 │                          │   Manager          │                         │
-│                          │ (Arc<Mutex<>>)     │                         │
+│                          │ (Arc<tokio::sync::Mutex<>>)│                  │
 │                          └─────────┬──────────┘                         │
 │                                    │                                     │
 │                 ┌──────────────────▼──────────────────┐                 │
@@ -107,6 +107,7 @@
 4. **SQLite as source of truth** — All sessions, messages, cron jobs, skills persisted
 5. **Stream everything** — LLM responses stream to gateway as they arrive; never buffer a full completion
 6. **Error audiences** — Three representations: user-facing clean message, developer structured log, LLM-facing tool error
+7. **`tokio::sync::Mutex` always** — Never use `std::sync::Mutex` inside async code; use `tokio::sync::Mutex` to avoid blocking the runtime. `std::sync::Mutex` is only acceptable for purely synchronous, non-async contexts.
 ---
 
 ## Related Documents

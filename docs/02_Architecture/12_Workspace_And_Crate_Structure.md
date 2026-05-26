@@ -23,6 +23,13 @@ members = [
     "crates/talon-plugins",
 ]
 
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+authors = ["Talon Contributors"]
+license = "MIT"
+repository = "https://github.com/RohiRIK/talon"
+
 [workspace.dependencies]
 # Async
 tokio          = { version = "1", features = ["full"] }

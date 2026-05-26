@@ -51,7 +51,7 @@ Phase 7 — Advanced Features  (Weeks 8+)      ← subagents, evolution
 ### Exit Gate
 ```bash
 cargo build --workspace                        # must compile (empty crates OK)
-cargo test --workspace                         # 0 tests, 0 failures
+cargo nextest run --workspace                   # 0 tests, 0 failures
 docker build -t talon:dev .                    # must produce an image
 ```
 
@@ -104,7 +104,7 @@ docker build -t talon:dev .                    # must produce an image
 
 ### Exit Gate
 ```bash
-cargo test -p talon-core -p talon-llm          # all tests pass
+cargo nextest run -p talon-core -p talon-llm   # all tests pass
 # Manual test: run agent with a real API key, send "hello", get a response
 TALON_LLM_API_KEY=sk-... cargo run -- --message "hello"
 ```
@@ -148,7 +148,7 @@ TALON_LLM_API_KEY=sk-... cargo run -- --message "hello"
 
 ### Exit Gate
 ```bash
-cargo test -p talon-memory                     # all tests pass
+cargo nextest run -p talon-memory              # all tests pass
 # FTS5 search works
 # Context assembly with 100+ messages doesn't overflow
 # Agent can call session_search and get results
@@ -190,7 +190,7 @@ cargo test -p talon-memory                     # all tests pass
 
 ### Exit Gate
 ```bash
-cargo test -p talon-tools                      # all tests pass
+cargo nextest run -p talon-tools               # all tests pass
 # Integration test: agent with file tools + terminal tool
 # Agent can read a file, modify it, search it
 # Docker sandbox: `rm -rf /` fails (seccomp blocks it)
@@ -316,7 +316,7 @@ These must pass at the END of every phase:
 cargo clippy --workspace -- -D warnings
 
 # 2. All tests pass
-cargo test --workspace
+cargo nextest run --workspace
 
 # 3. No type violations in docs (from 05_Canonical_Types.md audit checklist)
 grep -rn 'ToolOutput' docs/ | wc -l             # must be 0

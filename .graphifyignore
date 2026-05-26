@@ -1,0 +1,5 @@
+# Exclude audit history — dogfood output inflates god-node analysis
+dogfood-output/
+
+# Exclude graphify's own output
+graphify-out/

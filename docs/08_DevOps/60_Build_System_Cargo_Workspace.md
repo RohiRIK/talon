@@ -12,26 +12,30 @@
 talon/
 ├── Cargo.toml              # workspace root
 ├── Cargo.lock
-├── src/
-│   └── main.rs             # binary entry point
-├── talon-core/            # agent loop, tools, approval
+├── talon/                  # binary crate
 │   ├── Cargo.toml
 │   └── src/
-├── talon-llm/             # LLM providers (Anthropic, OpenAI-compat, Ollama)
-│   ├── Cargo.toml
-│   └── src/
-├── talon-memory/          # SQLite, FTS5, sessions, memory files
-│   ├── Cargo.toml
-│   └── src/
-├── talon-gateway/         # Telegram, Discord, HTTP, CLI/TUI
-│   ├── Cargo.toml
-│   └── src/
-├── talon-plugins/         # WASM runtime, plugin loader
-│   ├── Cargo.toml
-│   └── src/
-└── talon-tools/           # Built-in tool implementations
-    ├── Cargo.toml
-    └── src/
+│       ├── main.rs
+│       └── cli.rs
+└── crates/
+    ├── talon-core/        # agent loop, tools, approval
+    │   ├── Cargo.toml
+    │   └── src/
+    ├── talon-llm/         # LLM providers (Anthropic, OpenAI-compat, Ollama)
+    │   ├── Cargo.toml
+    │   └── src/
+    ├── talon-memory/      # SQLite, FTS5, sessions, memory files
+    │   ├── Cargo.toml
+    │   └── src/
+    ├── talon-gateway/     # Telegram, Discord, HTTP, CLI/TUI
+    │   ├── Cargo.toml
+    │   └── src/
+    ├── talon-plugins/     # WASM runtime, plugin loader
+    │   ├── Cargo.toml
+    │   └── src/
+    └── talon-tools/       # Built-in tool implementations
+        ├── Cargo.toml
+        └── src/
 ```
 
 ---
@@ -40,6 +44,7 @@ talon/
 
 ```toml
 [workspace]
+resolver = "2"
 members = [
     "talon",              # binary
     "crates/talon-core",
@@ -49,14 +54,13 @@ members = [
     "crates/talon-plugins",
     "crates/talon-tools",
 ]
-resolver = "2"
 
 [workspace.package]
-version = "1.0.0"
-edition = "2021"
+edition = "2024"
+version = "0.1.0"
 authors = ["Talon Contributors"]
 license = "MIT"
-repository = "https://github.com/yourname/talon"
+repository = "https://github.com/RohiRIK/talon"
 
 [workspace.dependencies]
 # Async runtime
@@ -190,7 +194,7 @@ cargo build --release
 cargo watch -x run
 
 # Run tests for all crates
-cargo test --workspace
+cargo nextest run --workspace
 
 # Check without building
 cargo check --workspace

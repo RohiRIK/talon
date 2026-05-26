@@ -18,7 +18,29 @@ Every error in Talon has three representations:
 
 ---
 
-## 2. Crate-Level Error Types
+## 2. Error Handling Split: Libraries vs. Binary
+
+| Crate | Crate type | Error tool | Why |
+|-------|-----------|-----------|-----|
+| `talon-core`, `talon-llm`, `talon-tools`, `talon-memory`, `talon-gateway`, `talon-plugins` | Library | `thiserror` typed enums | Callers pattern-match on variants |
+| `talon` (binary) | Application | `anyhow::Result` + `.context()` | Human-readable error chains; no caller to pattern-match |
+
+```rust
+// talon/src/main.rs — binary uses anyhow
+use anyhow::{Context, Result};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let config = talon_core::Config::load("~/.talon/config.toml")
+        .context("failed to load config")?;
+    talon_core::run(config).await.context("agent loop exited with error")?;
+    Ok(())
+}
+```
+
+---
+
+## 3. Crate-Level Error Types
 
 ```rust
 // talon-llm/src/error.rs
@@ -93,7 +115,7 @@ pub enum AgentError {
 
 ---
 
-## 3. Rate Limit Auto-Retry
+## 4. Rate Limit Auto-Retry
 
 ```rust
 pub async fn with_retry<F, T, E>(
@@ -127,7 +149,7 @@ where
 
 ---
 
-## 4. Panic Policy
+## 5. Panic Policy
 
 Talon must **never panic** in the hot path. Rules:
 
@@ -143,7 +165,7 @@ CI lint rule: `cargo clippy -- -D clippy::unwrap_used -D clippy::expect_used` (e
 
 ---
 
-## 5. Structured Logging
+## 6. Structured Logging
 
 ```rust
 // In tools
@@ -178,7 +200,7 @@ tracing_subscriber::registry()
 
 ---
 
-## 6. Error-to-ToolResult Mapping
+## 7. Error-to-ToolResult Mapping
 
 ```rust
 impl From<ToolError> for ToolResult {
