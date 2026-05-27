@@ -12,7 +12,8 @@ use talon_core::events::AgentEvent;
 use talon_core::tools::{Tool, ToolContext, ToolResult};
 use talon_core::tools::dispatcher::ToolDispatcher;
 use talon_llm::{AnthropicProvider, LlmProvider};
-use talon_memory::Database;
+use talon_memory::{Database, SqliteStore};
+use talon_tools::SessionSearchTool;
 
 // ── CLI definition ────────────────────────────────────────────────────────────
 
@@ -329,16 +330,19 @@ async fn run_agent(api_key: String, user_message: String) -> Result<()> {
     dispatcher.register(Arc::new(EchoTool));
     dispatcher.register(Arc::new(ReadFileTool));
 
-    // Set up DB persistence if ~/.talon/talon.db is reachable.
+    // Set up DB persistence and memory tools if ~/.talon/talon.db is reachable.
     let db = talon_home()
         .ok()
         .map(|p| p.join("talon.db"))
         .and_then(|p| p.to_str().map(|s| s.to_string()))
-        .and_then(|path| talon_memory::Database::open(&path).ok())
+        .and_then(|path| Database::open(&path).ok())
         .map(Arc::new);
 
     if let Some(ref db) = db {
         db.init_schema().await.ok();
+        // Register SessionSearchTool so the LLM can search past conversations.
+        let store = Arc::new(SqliteStore::new(Arc::clone(db)));
+        dispatcher.register(Arc::new(SessionSearchTool::new(store)));
     }
 
     let mut agent = {
