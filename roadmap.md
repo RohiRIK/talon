@@ -49,8 +49,12 @@ Phase 7 (Advanced: Subagents, ACP, Evolution) ← v2
 
 | Phase | Tasks | Exit Gate |
 |-------|-------|-----------|
-| **Phase 0** | Workspace, Cargo.toml, CI, Docker, versioning pipeline, install.sh | `cargo build --workspace --release` green, CI green, release workflow dry-run passes |
-| **Phase 0.5** | EchoTool, AnthropicProvider, inline agent loop | `cargo run -- --message "read Cargo.toml"` works E2E |
+| **Phase 0** ✅ | Workspace, Cargo.toml, CI, Docker, versioning pipeline, install.sh | `cargo build --workspace --release` green, CI green, release workflow dry-run passes |
+| **Phase 0.5** 👁 | EchoTool, AnthropicProvider, inline agent loop | `cargo run -- --message "read Cargo.toml"` works E2E |
+
+**Phase 0 completed: 2026-05-27.** All 30 tasks done. Workspace (`edition="2024"`, 7 crates), CI workflow (SHA-pinned, 3-OS matrix), release workflow (OIDC, cosign, SLSA L2, cargo dist), `deny.toml` + `dependabot.yml` + `SECURITY.md`, `cliff.toml` + `dist-workspace.toml` + `install.sh`, ADRs 0001–0006, `CODEOWNERS` + `lefthook.yml`, full `main.rs` with `talon init`. Local exit gates passed: `cargo build --release`, `cargo nextest run`, `cargo clippy -D warnings`, `cargo audit`, `cargo deny check`, `docker build -t talon:0`. Rust 1.88 required (cargo-chef dependency floor). CI on GitHub and release dry-run (`v0.0.1-test` tag) pending first push.
+
+> 👁 **First thing you see — end of Week 1:** `cargo run -- --message "read Cargo.toml"` prints a real LLM response to stdout. No UI yet — raw terminal output. One-shot, not interactive. But the agent is alive.
 
 **Unlocks:** All subsequent phases. The 7 load-bearing types get locked here.
 
@@ -60,7 +64,9 @@ Phase 7 (Advanced: Subagents, ACP, Evolution) ← v2
 
 | Phase | Tasks | Exit Gate |
 |-------|-------|-----------|
-| **Phase 1** | Core loop, LlmProvider trait, Tool trait, ApprovalMembrane, state machine, minimal DB | Agent responds to real LLM, messages persisted to SQLite |
+| **Phase 1** 👁 | Core loop, LlmProvider trait, Tool trait, ApprovalMembrane, state machine, minimal DB | Agent responds to real LLM, messages persisted to SQLite |
+
+> 👁 **First real agent response — Weeks 2–3:** `cargo run --release -- --message "hello"` now goes through the full typed agent loop: LLM → tool dispatch → approval → response. AgentEvents stream to stdout. Still one-shot CLI, not interactive — but every message is persisted to SQLite and the approval membrane is live.
 
 **Unlocks:** Phase 2 (memory needs DB schema), Phase 3 (tools need dispatcher).
 
@@ -83,11 +89,17 @@ Phase 7 (Advanced: Subagents, ACP, Evolution) ← v2
 
 **Memory stack decision:** LanceDB is the embedded memory storage engine (vectors + FTS + hybrid search). Redis is NOT a dependency. See `CLAUDE.md` for the full architecture decision.
 
-### Weeks 5–6 — The Agent Talks Everywhere
+### Weeks 5–6 — The Agent Talks Everywhere 🖥
 
 | Phase | Tasks | Exit Gate |
 |-------|-------|-----------|
-| **Phase 4** | Gateway trait, CLI, HTTP (Axum), TUI (Ratatui), Telegram (teloxide) | All 4 gateways functional, unified session memory |
+| **Phase 4** 🖥 | Gateway trait, CLI, HTTP (Axum), TUI (Ratatui), Telegram (teloxide) | All 4 gateways functional, unified session memory |
+
+> 🖥 **First interactive CLI — Week 5:** `cargo run --release -- --gateway cli` opens a persistent stdin/stdout chat loop. Type a message, get a response, keep going. Session memory is live — the agent remembers within the conversation.
+>
+> 🖥 **First TUI — Week 5–6:** `cargo run --release -- --gateway tui` opens a ratatui split-pane interface: input at the bottom, agent response stream at the top, AgentEvent status line (Thinking… / Calling tool… / Done). This is the first time Talon looks like an app.
+>
+> 📱 **First Telegram — Week 6:** Set `TELEGRAM_BOT_TOKEN`, send "hello" from your phone → response in under 5 seconds.
 
 **Depends on:** Phase 1 (agent loop), Phase 2 (session persistence). Does NOT depend on Phase 2.5 or 3.
 

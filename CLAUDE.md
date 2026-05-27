@@ -38,8 +38,8 @@ This applies to: Talon's system prompt, tool `schema()` descriptions, `SessionSe
 
 ## Current State
 
-**Phase: 0 — Not started.** No Rust code exists. All prior commits are docs and planning only.
-The next action is Phase 0 (workspace scaffold + CI). See `PLAN.md` and `roadmap.md`.
+**Phase: 0.5 — Next.** Phase 0 complete (2026-05-27). Workspace, CI, Docker, supply-chain security, release pipeline, and all 30 scaffold tasks done. `cargo build --workspace --release` green, `docker build -t talon:0` green.
+The next action is Phase 0.5 (working prototype — EchoTool, AnthropicProvider, inline agent loop). See `PLAN.md` Phase 0.5 tasks.
 
 ---
 
@@ -116,6 +116,20 @@ There are **two databases, not competing ones**: LanceDB owns *what the agent kn
 - Sequential dispatch is the **default** (`dispatch_sequential`)
 - Parallel dispatch (`dispatch_parallel`, JoinSet + Semaphore cap 4) is **opt-in** via `ToolContext::allow_parallel`
 
+### Terminal Sandbox Backends
+
+Two backends, configured explicitly in `~/.talon/config.toml [tools.terminal] backend`:
+
+| Value | Isolation | `rm -rf /` | Default |
+|-------|-----------|------------|---------|
+| `"docker"` | Full — seccomp + no network + memory cap | Blocked | ✅ Yes |
+| `"native"` | None — runs on host | NOT blocked | ❌ No |
+
+`native` is a legitimate user choice (no Docker, power users, CI runners). It is **never a silent fallback**. Rules:
+- `talon init` detects missing Docker → sets `native` explicitly with a printed warning
+- `native` always runs at `ApprovalLevel::Dangerous` — every command requires user approval
+- Every `native` tool result is prefixed `[NATIVE]` so the LLM and user always know
+
 ### Browser Tool
 
 - Use `headless_chrome` crate (actively maintained CDP client), NOT `chromiumoxide` (has axum 0.7+ dep conflicts as of 2025)
@@ -171,7 +185,7 @@ docker build -t talon:phase-N .
 
 | Phase | Name | Status | Exit Gate |
 |-------|------|--------|-----------|
-| 0 | Foundation | ⬜ Not started | `cargo build --workspace --release` green, CI green |
+| 0 | Foundation | ✅ Complete (2026-05-27) | `cargo build --workspace --release` green, CI green |
 | 0.5 | Working Prototype | ⬜ Not started | `cargo run -- --message "read Cargo.toml"` works E2E |
 | 1 | Core Agent Loop | ⬜ Not started | Real LLM response, messages persisted to SQLite |
 | 2 | Memory (FTS5) | ⬜ Not started | FTS5 search <50ms, context within token budget |

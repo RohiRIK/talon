@@ -127,6 +127,8 @@ talon/                         # workspace root
 - **NEVER** log raw LLM prompts at INFO level — DEBUG only (PII risk)
 - **NEVER** hold a DB connection across `.await` — open inside `spawn_blocking` closure, close when closure returns
 - **NEVER** make `dispatch_parallel` the default — sequential dispatch is the safe default; parallel is opt-in
+- **NEVER** silently fall back to native terminal execution — if Docker is unavailable, `talon init` sets `backend = "native"` explicitly with a warning; the user always knows which mode is active
+- **NEVER** allow `native` backend without `ApprovalLevel::Dangerous` on every command — no exceptions
 
 ---
 
@@ -156,62 +158,62 @@ docker build -t talon:phase-N .
 ### Tasks
 
 **Workspace scaffold**
-- [ ] 0.1 Init workspace `Cargo.toml` — `edition="2024"`, `resolver="2"`, `[workspace.package]` with `version = "0.1.0"`, `authors`, `license = "MIT OR Apache-2.0"`, `repository`; `[workspace.dependencies]`
-- [ ] 0.2 Add all shared deps to `[workspace.dependencies]`: tokio (full), tracing, tracing-subscriber, serde, serde_json, futures, deadpool-sqlite, rusqlite (bundled+vtab), reqwest (rustls-tls), axum, wasmtime, teloxide, ratatui, crossterm, clap (derive). **Do NOT add async-trait — edition 2024 native async fn in traits.**
-- [ ] 0.3 Scaffold crates: `cargo new --lib crates/talon-{core,llm,memory,tools,gateway,plugins}` + `cargo new talon`
-- [ ] 0.4 Add `rust-toolchain.toml` pinning stable with `components = ["rustfmt", "clippy"]`
-- [ ] 0.5 Install dev tools: `cargo install cargo-nextest cargo-chef cargo-watch cargo-audit cargo-bloat cargo-deny git-cliff cargo-dist`
-- [ ] 0.6 Create `.cargo/config.toml` with aliases: `t = "nextest run"`, `c = "clippy --workspace --all-targets -- -D warnings"`
-- [ ] 0.7 Write multi-stage `Dockerfile` with `cargo-chef` layer caching, distroless final stage
-- [ ] 0.8 Write `.dockerignore` (target/, .git/, docs/, graphify-out/)
+- [x] 0.1 Init workspace `Cargo.toml` — `edition="2024"`, `resolver="2"`, `[workspace.package]` with `version = "0.1.0"`, `authors`, `license = "MIT OR Apache-2.0"`, `repository`; `[workspace.dependencies]`
+- [x] 0.2 Add all shared deps to `[workspace.dependencies]`: tokio (full), tracing, tracing-subscriber, serde, serde_json, futures, deadpool-sqlite, rusqlite (bundled+vtab), reqwest (rustls-tls), axum, wasmtime, teloxide, ratatui, crossterm, clap (derive). **Do NOT add async-trait — edition 2024 native async fn in traits.**
+- [x] 0.3 Scaffold crates: `cargo new --lib crates/talon-{core,llm,memory,tools,gateway,plugins}` + `cargo new talon`
+- [x] 0.4 Add `rust-toolchain.toml` pinning stable with `components = ["rustfmt", "clippy"]`
+- [x] 0.5 Install dev tools: `cargo install cargo-nextest cargo-chef cargo-watch cargo-audit cargo-bloat cargo-deny git-cliff cargo-dist`
+- [x] 0.6 Create `.cargo/config.toml` with aliases: `t = "nextest run"`, `c = "clippy --workspace --all-targets -- -D warnings"`
+- [x] 0.7 Write multi-stage `Dockerfile` with `cargo-chef` layer caching, distroless final stage
+- [x] 0.8 Write `.dockerignore` (target/, .git/, docs/, graphify-out/)
 
 **Supply-chain security**
-- [ ] 0.9 Write `deny.toml` for `cargo-deny`: allowed licenses (MIT, Apache-2.0, ISC, BSD-2-Clause, BSD-3-Clause, Zlib), deny `unmaintained` and `unsound` advisories, duplicate crate detection
-- [ ] 0.10 Write `.github/dependabot.yml` — weekly Rust (`cargo`) and GitHub Actions dep bumps; auto-assign to a dedicated `deps` label
-- [ ] 0.11 Write `.github/SECURITY.md` — responsible disclosure policy: contact email, expected response SLA (48h), embargo window (90 days), CVE process
+- [x] 0.9 Write `deny.toml` for `cargo-deny`: allowed licenses (MIT, Apache-2.0, ISC, BSD-2-Clause, BSD-3-Clause, Zlib), deny `unmaintained` and `unsound` advisories, duplicate crate detection
+- [x] 0.10 Write `.github/dependabot.yml` — weekly Rust (`cargo`) and GitHub Actions dep bumps; auto-assign to a dedicated `deps` label
+- [x] 0.11 Write `.github/SECURITY.md` — responsible disclosure policy: contact email, expected response SLA (48h), embargo window (90 days), CVE process
 
 **CI workflow** (`.github/workflows/ci.yml`)
-- [ ] 0.12 Top-level: `permissions: {}` (deny all); `concurrency` block (cancel in-progress on same ref)
-- [ ] 0.13 Jobs — each with `permissions: contents: read` only:
+- [x] 0.12 Top-level: `permissions: {}` (deny all); `concurrency` block (cancel in-progress on same ref)
+- [x] 0.13 Jobs — each with `permissions: contents: read` only:
   - `fmt`: `cargo fmt --all -- --check`
   - `clippy`: `cargo clippy --workspace --all-targets -- -D warnings -D clippy::unwrap_used -D clippy::expect_used`
   - `test`: `cargo nextest run --workspace` — matrix: ubuntu / macos / windows
   - `build`: `cargo build --workspace --release` — same matrix
   - `audit`: `cargo audit` then `cargo deny check`
   - `docker`: `docker build` (linux only, no push)
-- [ ] 0.14 Pin **every** action to its exact commit SHA; keep the version tag as a comment (`# v4.1.1`). Never use mutable tags.
+- [x] 0.14 Pin **every** action to its exact commit SHA; keep the version tag as a comment (`# v4.1.1`). Never use mutable tags.
 
 **Release workflow** (`.github/workflows/release.yml`)
-- [ ] 0.15 Trigger: `push: tags: ['v[0-9]+.[0-9]+.[0-9]+']` only — not on branch push
-- [ ] 0.16 Top-level `permissions: {}`. Per-job grants:
+- [x] 0.15 Trigger: `push: tags: ['v[0-9]+.[0-9]+.[0-9]+']` only — not on branch push
+- [x] 0.16 Top-level `permissions: {}`. Per-job grants:
   - build job: `contents: read`
   - sign + attest job: `contents: write`, `id-token: write`, `attestations: write`
   - publish job: `contents: read`, `id-token: write`
-- [ ] 0.17 Build job: `cargo dist build --release` for all targets (linux x86_64/aarch64, macos x86_64/aarch64, windows x86_64); upload artifacts
-- [ ] 0.18 Sign + attest job:
+- [x] 0.17 Build job: `cargo dist build --release` for all targets (linux x86_64/aarch64, macos x86_64/aarch64, windows x86_64); upload artifacts
+- [x] 0.18 Sign + attest job:
   - Install `cosign` (keyless, via GitHub OIDC — no private key stored anywhere)
   - Sign each binary: `cosign sign-blob --yes --oidc-issuer=https://token.actions.githubusercontent.com`
   - Generate `SHA256SUMS` and sign it
   - SLSA L2 provenance: `actions/attest-build-provenance` for every artifact
-- [ ] 0.19 GitHub Release job: create release from tag, upload binaries + signatures + `SHA256SUMS` + provenance; auto-generate release notes from `git-cliff`
-- [ ] 0.20 Publish job (crates.io trusted publishing — no stored token):
+- [x] 0.19 GitHub Release job: create release from tag, upload binaries + signatures + `SHA256SUMS` + provenance; auto-generate release notes from `git-cliff`
+- [x] 0.20 Publish job (crates.io trusted publishing — no stored token):
   - Configure crates.io trusted publisher for this repo in crates.io dashboard
   - Publish library crates in dependency order: `talon-core` → `talon-llm` → `talon-memory` → `talon-tools` → `talon-gateway` → `talon-plugins`
   - `cargo publish --no-verify` (already tested in CI)
-- [ ] 0.21 Docker publish job: `docker buildx build --platform linux/amd64,linux/arm64`, push to Docker Hub using OIDC; sign image with `cosign`
+- [x] 0.21 Docker publish job: `docker buildx build --platform linux/amd64,linux/arm64`, push to Docker Hub using OIDC; sign image with `cosign`
 
 **Versioning tooling**
-- [ ] 0.22 Write `cliff.toml` — scopes: `core`, `llm`, `memory`, `tools`, `gateway`, `plugins`, `ci`, `release`; tag pattern `v[0-9]+\.[0-9]+\.[0-9]+`
-- [ ] 0.23 Write `dist-workspace.toml` — `cargo dist` config: targets, installers (shell script, Homebrew), checksum (sha256), GitHub CI integration
-- [ ] 0.24 Write `install.sh` — verifies SHA256 checksum and cosign signature before installing; prints "TRUST it. It's RUST." on success
+- [x] 0.22 Write `cliff.toml` — scopes: `core`, `llm`, `memory`, `tools`, `gateway`, `plugins`, `ci`, `release`; tag pattern `v[0-9]+\.[0-9]+\.[0-9]+`
+- [x] 0.23 Write `dist-workspace.toml` — `cargo dist` config: targets, installers (shell script, Homebrew), checksum (sha256), GitHub CI integration
+- [x] 0.24 Write `install.sh` — verifies SHA256 checksum and cosign signature before installing; prints "TRUST it. It's RUST." on success
 
 **Code ownership + repo hygiene**
-- [ ] 0.25 Write `.github/CODEOWNERS` — `* @<owner>` default; crate-level ownership as team grows
-- [ ] 0.26 Write pre-commit config (`lefthook.yml`): fmt + clippy + nextest on staged files
-- [ ] 0.27 Boilerplate `talon/src/main.rs` — tracing init, clap CLI skeleton (`--message`, `--config`, `--log-level`, `--gateway`)
-- [ ] 0.28 Add `talon init` subcommand — creates `~/.talon/` dir, writes starter `config.toml`, prompts for LLM API key, stores in OS keychain (`keyring` crate)
-- [ ] 0.29 Create `docs/ADR/` — `0001-edition-2024.md`, `0002-thiserror-vs-anyhow.md`, `0003-no-async-trait.md`, `0004-rusqlite-spawn-blocking.md`, `0005-lancedb-memory-backend.md`, `0006-semver-release-pipeline.md`
-- [ ] 0.30 Add `README.md` — lead with the memory story ("TRUST it — it's built on RUST"), installation (`curl | sh`), quick start; `LICENSE` (Apache-2.0 + MIT dual); `CONTRIBUTING.md`
+- [x] 0.25 Write `.github/CODEOWNERS` — `* @<owner>` default; crate-level ownership as team grows
+- [x] 0.26 Write pre-commit config (`lefthook.yml`): fmt + clippy + nextest on staged files
+- [x] 0.27 Boilerplate `talon/src/main.rs` — tracing init, clap CLI skeleton (`--message`, `--config`, `--log-level`, `--gateway`)
+- [x] 0.28 Add `talon init` subcommand — creates `~/.talon/` dir, writes starter `config.toml`, prompts for LLM API key, stores in OS keychain (`keyring` crate)
+- [x] 0.29 Create `docs/ADR/` — `0001-edition-2024.md`, `0002-thiserror-vs-anyhow.md`, `0003-no-async-trait.md`, `0004-rusqlite-spawn-blocking.md`, `0005-lancedb-memory-backend.md`, `0006-semver-release-pipeline.md`
+- [x] 0.30 Add `README.md` — lead with the memory story ("TRUST it — it's built on RUST"), installation (`curl | sh`), quick start; `LICENSE` (Apache-2.0 + MIT dual); `CONTRIBUTING.md`
 
 ### Exit Gate
 ```bash
@@ -340,6 +342,31 @@ sqlite3 ~/.talon/talon.db 'SELECT count(*) FROM messages_fts;'   # > 0
 
 > **Edge:** Docker-sandboxed terminal with seccomp — `rm -rf /` is physically blocked. Aider runs on
 > host. Claude Code asks. Talon makes it impossible.
+> Users who don't want Docker can opt into native host execution — but it is an explicit,
+> acknowledged choice with a hard warning, never a silent fallback.
+
+### Terminal Sandbox Design
+
+Two backends, one trait. The backend is set in `~/.talon/config.toml` — never auto-detected silently.
+
+```toml
+[tools.terminal]
+# "docker"  — sandboxed (default, recommended). Requires Docker on host.
+#             rm -rf / is physically blocked via seccomp + network isolation.
+# "native"  — runs directly on your machine. No isolation. You are responsible.
+#             Talon will warn loudly and require explicit acknowledgement on first use.
+backend = "docker"
+```
+
+| Backend | Isolation | `rm -rf /` | Who it's for |
+|---------|-----------|------------|--------------|
+| `docker` | Full (seccomp + no network + memory cap) | Blocked | Default — everyone |
+| `native` | None | **NOT blocked** | Power users who explicitly opt in |
+
+**`native` mode behaviour:**
+- On first run: prints a one-time warning to stderr and requires `y` confirmation (stored in config so it doesn't repeat every time, but is shown again after any config reset)
+- `ApprovalLevel` for `TerminalTool` escalates to `Dangerous` in native mode regardless of the command — every shell execution requires user approval
+- A `[NATIVE]` tag is prepended to every tool result so the LLM and user always know which mode is active
 
 ### Tasks
 - [ ] 3.1 `crates/talon-tools/src/fs/read.rs` — `ReadFileTool` (Safe), 10MB size limit
@@ -347,25 +374,35 @@ sqlite3 ~/.talon/talon.db 'SELECT count(*) FROM messages_fts;'   # > 0
 - [ ] 3.3 `crates/talon-tools/src/fs/edit.rs` — `EditFileTool` (NeedsApproval), exact-string replace, fails if not unique
 - [ ] 3.4 `crates/talon-tools/src/fs/glob.rs` — `GlobTool` (Safe) using `globset`
 - [ ] 3.5 `crates/talon-tools/src/fs/grep.rs` — `GrepTool` (Safe) using ripgrep core
-- [ ] 3.6 `crates/talon-tools/src/terminal/mod.rs` — `TerminalTool` (Dangerous), `SandboxBackend` trait
+- [ ] 3.6 `crates/talon-tools/src/terminal/mod.rs` — `TerminalTool` (Dangerous), `SandboxBackend` trait:
+  ```rust
+  pub trait SandboxBackend: Send + Sync {
+      fn mode(&self) -> SandboxMode;  // Docker | Native
+      async fn execute(&self, cmd: &str, ctx: &ToolContext) -> ToolResult;
+  }
+  ```
 - [ ] 3.7 `crates/talon-tools/src/terminal/docker.rs` — `DockerSandbox`: `docker run --rm --network=none --memory=512m --security-opt=seccomp=talon-seccomp.json`
-- [ ] 3.8 `crates/talon-tools/src/terminal/seccomp.json` — blocks: mount, ptrace, kexec_load, reboot, raw network
-- [ ] 3.9 `Dockerfile.sandbox` — minimal Alpine, no root, no setuid
-- [ ] 3.10 `crates/talon-tools/src/timeout.rs` — `TimeoutWrapper<T: Tool>` decorator using `tokio::time::timeout`
-- [ ] 3.11 `dispatch_sequential` is default; `dispatch_parallel` uses `JoinSet` + global `Semaphore` (default cap 4), opt-in via `ToolContext::allow_parallel`
-- [ ] 3.12 Integration tests: read/write/grep/glob work; `rm -rf /` blocked; timeout kills hung process
+- [ ] 3.8 `crates/talon-tools/src/terminal/native.rs` — `NativeBackend`: runs on host via `tokio::process::Command`; always `ApprovalLevel::Dangerous`; prepends `[NATIVE]` tag; one-time stderr warning + `y` acknowledgement stored in config
+- [ ] 3.9 `crates/talon-tools/src/terminal/seccomp.json` — blocks: mount, ptrace, kexec_load, reboot, raw network
+- [ ] 3.10 `Dockerfile.sandbox` — minimal Alpine, no root, no setuid
+- [ ] 3.11 `crates/talon-tools/src/timeout.rs` — `TimeoutWrapper<T: Tool>` decorator using `tokio::time::timeout`
+- [ ] 3.12 `dispatch_sequential` is default; `dispatch_parallel` uses `JoinSet` + global `Semaphore` (default cap 4), opt-in via `ToolContext::allow_parallel`
+- [ ] 3.13 Integration tests: read/write/grep/glob work; `rm -rf /` blocked in Docker mode; native mode warns and tags output; timeout kills hung process
 
 ### Exit Gate
 ```bash
 cargo nextest run -p talon-tools
+# Docker mode: rm -rf / is blocked
 cargo run --release -- --message "run 'rm -rf /' in sandbox"
-# expects: seccomp blocks it, ToolResult::error returned to LLM
+# Native mode: warning shown, [NATIVE] tag in output, ApprovalLevel::Dangerous enforced
+TALON_TERMINAL_BACKEND=native cargo run --release -- --message "run 'echo hello'"
 docker images | grep talon-sandbox
 ```
 
 ### Risks
-- Docker not on host → fallback `SandboxBackend::Native` with rlimit; warn on startup
+- Docker not installed → `talon init` detects this and sets `backend = "native"` with explicit warning; user can switch to Docker later
 - Seccomp on macOS → Docker Desktop handles transparently; document
+- Native mode misuse → mitigated by always-Dangerous approval level and persistent `[NATIVE]` labelling
 
 ---
 
