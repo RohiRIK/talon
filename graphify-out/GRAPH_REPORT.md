@@ -1,13 +1,18 @@
 # Graph Report - talon  (2026-05-26)
 
 ## Corpus Check
-- 110 files · ~102,401 words
+- 113 files · ~113,725 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2537 nodes · 2408 edges · 155 communities (154 shown, 1 thin omitted)
+- 3130 nodes · 2989 edges · 214 communities (213 shown, 1 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
+
+## Graph Freshness
+- Built from commit: `f434d3b1`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - [[_COMMUNITY_Community 0|Community 0]]
@@ -165,23 +170,82 @@
 - [[_COMMUNITY_Community 152|Community 152]]
 - [[_COMMUNITY_Community 153|Community 153]]
 - [[_COMMUNITY_Community 154|Community 154]]
+- [[_COMMUNITY_Community 155|Community 155]]
+- [[_COMMUNITY_Community 156|Community 156]]
+- [[_COMMUNITY_Community 157|Community 157]]
+- [[_COMMUNITY_Community 158|Community 158]]
+- [[_COMMUNITY_Community 159|Community 159]]
+- [[_COMMUNITY_Community 160|Community 160]]
+- [[_COMMUNITY_Community 161|Community 161]]
+- [[_COMMUNITY_Community 162|Community 162]]
+- [[_COMMUNITY_Community 163|Community 163]]
+- [[_COMMUNITY_Community 164|Community 164]]
+- [[_COMMUNITY_Community 165|Community 165]]
+- [[_COMMUNITY_Community 166|Community 166]]
+- [[_COMMUNITY_Community 167|Community 167]]
+- [[_COMMUNITY_Community 168|Community 168]]
+- [[_COMMUNITY_Community 169|Community 169]]
+- [[_COMMUNITY_Community 170|Community 170]]
+- [[_COMMUNITY_Community 171|Community 171]]
+- [[_COMMUNITY_Community 172|Community 172]]
+- [[_COMMUNITY_Community 173|Community 173]]
+- [[_COMMUNITY_Community 174|Community 174]]
+- [[_COMMUNITY_Community 175|Community 175]]
+- [[_COMMUNITY_Community 176|Community 176]]
+- [[_COMMUNITY_Community 177|Community 177]]
+- [[_COMMUNITY_Community 178|Community 178]]
+- [[_COMMUNITY_Community 179|Community 179]]
+- [[_COMMUNITY_Community 180|Community 180]]
+- [[_COMMUNITY_Community 181|Community 181]]
+- [[_COMMUNITY_Community 182|Community 182]]
+- [[_COMMUNITY_Community 183|Community 183]]
+- [[_COMMUNITY_Community 184|Community 184]]
+- [[_COMMUNITY_Community 185|Community 185]]
+- [[_COMMUNITY_Community 186|Community 186]]
+- [[_COMMUNITY_Community 187|Community 187]]
+- [[_COMMUNITY_Community 188|Community 188]]
+- [[_COMMUNITY_Community 189|Community 189]]
+- [[_COMMUNITY_Community 190|Community 190]]
+- [[_COMMUNITY_Community 191|Community 191]]
+- [[_COMMUNITY_Community 192|Community 192]]
+- [[_COMMUNITY_Community 193|Community 193]]
+- [[_COMMUNITY_Community 194|Community 194]]
+- [[_COMMUNITY_Community 195|Community 195]]
+- [[_COMMUNITY_Community 196|Community 196]]
+- [[_COMMUNITY_Community 197|Community 197]]
+- [[_COMMUNITY_Community 198|Community 198]]
+- [[_COMMUNITY_Community 199|Community 199]]
+- [[_COMMUNITY_Community 200|Community 200]]
+- [[_COMMUNITY_Community 201|Community 201]]
+- [[_COMMUNITY_Community 202|Community 202]]
+- [[_COMMUNITY_Community 203|Community 203]]
+- [[_COMMUNITY_Community 204|Community 204]]
+- [[_COMMUNITY_Community 205|Community 205]]
+- [[_COMMUNITY_Community 206|Community 206]]
+- [[_COMMUNITY_Community 207|Community 207]]
+- [[_COMMUNITY_Community 208|Community 208]]
+- [[_COMMUNITY_Community 209|Community 209]]
+- [[_COMMUNITY_Community 210|Community 210]]
+- [[_COMMUNITY_Community 211|Community 211]]
+- [[_COMMUNITY_Community 212|Community 212]]
+- [[_COMMUNITY_Community 213|Community 213]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `Issues Found` - 15 edges
-2. `Graphify — Complete Spec for the Talon Project` - 15 edges
-3. `Capability Matrix — Keep / Edit / Drop` - 13 edges
-4. `Category 04 — Core Features (Docs 29–40)` - 13 edges
-5. `Migration Roadmap & Phases` - 13 edges
-6. `Missing Coverage` - 12 edges
-7. `Missing Coverage` - 12 edges
-8. `Talon AI — Zero-to-Hero Rust Migration` - 12 edges
-9. `Strategic Recommendations & Guiding Principles` - 12 edges
-10. `Python Pain Points & Bottlenecks` - 12 edges
+1. `Talon Agent Framework — Comprehensive Specification` - 28 edges
+2. `Spec: talos-agent-framework` - 24 edges
+3. `Talon — Zero to Hero Implementation Plan` - 18 edges
+4. `Graphify — Complete Spec for the Talon Project` - 15 edges
+5. `Issues Found` - 15 edges
+6. `Error Handling Strategy` - 14 edges
+7. `Talon AI — Zero-to-Hero Rust Migration` - 13 edges
+8. `Capability Matrix — Keep / Edit / Drop` - 13 edges
+9. `Category 04 — Core Features (Docs 29–40)` - 13 edges
+10. `Migration Roadmap & Phases` - 13 edges
 
 ## Surprising Connections (you probably didn't know these)
 - None detected - all connections are within the same source files.
 
-## Communities (155 total, 1 thin omitted)
+## Communities (214 total, 1 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.05
@@ -496,8 +560,8 @@ Cohesion: 0.12
 Nodes (15): 1. Crate: teloxide, 2. Bot Initialization, 3. Long Polling Listener, 4. Message Delivery, 5. Webhook Mode, code:toml ([dependencies]), code:rust (pub struct TelegramGateway {), code:rust (async fn listen(&self, input_tx: mpsc::Sender<AgentInput>) {) (+7 more)
 
 ### Community 78 - "Community 78"
-Cohesion: 0.12
-Nodes (14): 1. The Three Audiences, 2. Crate-Level Error Types, 3. Rate Limit Auto-Retry, 4. Panic Policy, 5. Structured Logging, 6. Error-to-ToolResult Mapping, code:rust (// talon-llm/src/error.rs), code:rust (// In tools) (+6 more)
+Cohesion: 0.11
+Nodes (22): 1. The Three Audiences, 2. Crate-Level Error Types, 2. Error Handling Split: Libraries vs. Binary, 3. Crate-Level Error Types, 3. Rate Limit Auto-Retry, 4. Panic Policy, 4. Rate Limit Auto-Retry, 5. Panic Policy (+14 more)
 
 ### Community 79 - "Community 79"
 Cohesion: 0.12
@@ -524,8 +588,8 @@ Cohesion: 0.17
 Nodes (10): 1. What Are Subagents?, 2. Spawn Mechanism, 3. Parallel Batch Execution, 4. Result Injection, 5. Spawn Depth Limits, code:rust (pub struct SubagentSpawner {), code:block3 ([delegate_task called with 2 parallel tasks]), code:toml ([tools.delegate_task]) (+2 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.15
-Nodes (12): 00_Connections/ — Knowledge Graph & Cross-Reference Analysis, 01_Analysis/ — Source Ecosystem Research, 02_Architecture/ — Talon Rust Architecture, 03_Migration_Strategy/ — From TS/Python to Rust, 04_Core_Features/ — Feature Implementation Specs, 05_API_Bindings/ — External Integrations, 06_Concurrency/ — Async & Parallelism, 07_Memory_System/ — Persistence & Retrieval (+4 more)
+Cohesion: 0.14
+Nodes (13): 00_Connections/ — Knowledge Graph & Cross-Reference Analysis, 01_Analysis/ — Source Ecosystem Research, 02_Architecture/ — Talon Rust Architecture, 03_Migration_Strategy/ — From TS/Python to Rust, 04_Core_Features/ — Feature Implementation Specs, 05_API_Bindings/ — External Integrations, 06_Concurrency/ — Async & Parallelism, 07_Memory_System/ — Persistence & Retrieval (+5 more)
 
 ### Community 86 - "Community 86"
 Cohesion: 0.13
@@ -701,7 +765,7 @@ Nodes (11): Category 02 — Architecture (Docs 11–20), Doc 11 — Talon System
 
 ### Community 130 - "Community 130"
 Cohesion: 0.20
-Nodes (10): Checklist, code:bash (cargo test -p talon-core -p talon-llm          # all tests p), Exit Gate, Phase 1 — Core Agent Loop, Step 1.1 — Error Types (Doc 54), Step 1.2 — LLM Provider Trait (Doc 41, 42), Step 1.3 — Tool Trait (Doc 14), Step 1.4 — Approval Membrane (Doc 17) (+2 more)
+Nodes (10): Checklist, code:bash (cargo nextest run -p talon-core -p talon-llm   # all tests p), Exit Gate, Phase 1 — Core Agent Loop, Step 1.1 — Error Types (Doc 54), Step 1.2 — LLM Provider Trait (Doc 41, 42), Step 1.3 — Tool Trait (Doc 14), Step 1.4 — Approval Membrane (Doc 17) (+2 more)
 
 ### Community 131 - "Community 131"
 Cohesion: 0.22
@@ -717,7 +781,7 @@ Nodes (9): code:rust (// Canonical location: talon-llm/src/lib.rs), code:rust (/
 
 ### Community 134 - "Community 134"
 Cohesion: 0.22
-Nodes (9): Checklist, code:bash (cargo test -p talon-memory                     # all tests p), Exit Gate, Phase 2 — Memory, Step 2.1 — SQLite Schema (Doc 55), Step 2.2 — MemoryStore Trait (Doc 35), Step 2.3 — Context Assembly (Doc 15), Step 2.4 — Session Search Tool (Doc 57) (+1 more)
+Nodes (9): Checklist, code:bash (cargo nextest run -p talon-memory              # all tests p), Exit Gate, Phase 2 — Memory, Step 2.1 — SQLite Schema (Doc 55), Step 2.2 — MemoryStore Trait (Doc 35), Step 2.3 — Context Assembly (Doc 15), Step 2.4 — Session Search Tool (Doc 57) (+1 more)
 
 ### Community 135 - "Community 135"
 Cohesion: 0.25
@@ -725,7 +789,7 @@ Nodes (8): Category 05 — API Bindings (Docs 41–47), Doc 41 — LLM Provider 
 
 ### Community 136 - "Community 136"
 Cohesion: 0.25
-Nodes (8): Checklist, code:bash (cargo test -p talon-tools                      # all tests p), Exit Gate, Phase 3 — Tools Tier 1, Step 3.1 — File System Tools (Doc 59), Step 3.2 — Terminal Tool (Doc 29), Step 3.3 — Tool Execution Engine (Doc 30), Step 3.4 — Async Tool Execution (Doc 52)
+Nodes (8): Checklist, code:bash (cargo nextest run -p talon-tools               # all tests p), Exit Gate, Phase 3 — Tools Tier 1, Step 3.1 — File System Tools (Doc 59), Step 3.2 — Terminal Tool (Doc 29), Step 3.3 — Tool Execution Engine (Doc 30), Step 3.4 — Async Tool Execution (Doc 52)
 
 ### Community 137 - "Community 137"
 Cohesion: 0.25
@@ -799,22 +863,258 @@ Nodes (5): code:json ({), code:json ({), Edge fields, `graph.json` Schema, Node 
 Cohesion: 0.67
 Nodes (3): Depends On, Related Documents, See Also
 
+### Community 155 - "Community 155"
+Cohesion: 0.06
+Nodes (32): AC-1: graphify, AC-2: claude CLI, AC-3: codex CLI, AC-4: opencode CLI, AC-5: Process spawn, AC-6: Timeout and kill, AC-7: Approval routing, Acceptance Criteria (+24 more)
+
+### Community 156 - "Community 156"
+Cohesion: 0.13
+Nodes (15): AgentRouter, code:rust (pub struct AgentLoop {), code:rust (#[async_trait]), code:toml ([gateways.telegram]), code:rust (pub struct AgentRouter {), code:rust (pub fn normalize_for_platform(text: &str, platform: &str) ->), code:rust (pub struct GatewaySupervisor {), Core Types (talos-core) (+7 more)
+
+### Community 157 - "Community 157"
+Cohesion: 0.14
+Nodes (13): Acceptance Criteria, code:block1 (talos/), code:toml ([webhooks]), code:toml (tokio, futures, async-trait, tokio-stream      # async runti), Edge Cases, Goal, Key Dependencies, Non-Goals (+5 more)
+
+### Community 158 - "Community 158"
+Cohesion: 0.15
+Nodes (13): code:block37 (User starts `talos` → ratatui TUI renders), code:block38 (Telegram webhook/poll → TelegramGateway::listen()), code:block39 (CronScheduler tick → load CronJob from SQLite), code:block40 (Parent AgentLoop encounters delegate_task tool call), code:block41 (User runs `talos setup`), code:block42 (External service POSTs to /hooks/github with JSON body), Flow 1: CLI Chat Session, Flow 2: Telegram Message (+5 more)
+
+### Community 159 - "Community 159"
+Cohesion: 0.17
+Nodes (11): 1. Executive Summary, 24. Risk Register, 26. Open Questions, 2. Vision & Positioning, 3. Competitive Analysis, 4. Design Principles, 5. Performance Targets, 6. Workspace & Crate Structure (+3 more)
+
+### Community 160 - "Community 160"
+Cohesion: 0.17
+Nodes (12): Audit Log, code:block21 (agent_loop (session_id, profile)), code:rust (pub struct TalosMetrics {), code:toml ([observability]), code:block24 (GET /health → { "status": "ok", "uptime_secs": 12345, "gatew), code:rust (std::panic::set_hook(Box::new(|info| {), Export, Health Endpoint (+4 more)
+
+### Community 161 - "Community 161"
+Cohesion: 0.18
+Nodes (10): 7 Load-Bearing Types (locked after Phase 0.5 prototype, NEVER redefined), Anti-Patterns — Never Do This, Beat the Competition, code:block1 (talon/                         # workspace root), code:bash (cargo fmt --all -- --check), Competitive Targets, Cross-Phase Quality Gates (runs after EVERY phase), Final Acceptance Criteria (+2 more)
+
+### Community 162 - "Community 162"
+Cohesion: 0.18
+Nodes (10): Architecture, code:block1 (┌─────────────────────────────────────────────────────────┐), Contributing, Design Principles, Features, License, Status, Talon (+2 more)
+
+### Community 163 - "Community 163"
+Cohesion: 0.18
+Nodes (11): 16. Plugin Architecture (WASM + Native), code:rust (// Guest exports:), code:rust (pub struct WasmTool {), code:toml ([[plugins]]), code:rust (pub struct McpToolAdapter {), MCP Integration, Plugin Config (TOML), Tool Registry Composition (startup order) (+3 more)
+
+### Community 164 - "Community 164"
+Cohesion: 0.18
+Nodes (11): 17. Security Model, Approval Membrane, code:rust (pub struct ApprovalMembrane {), code:rust (pub struct SecretStore {), code:rust (pub struct DockerSandboxBackend {), code:rust (pub struct RateLimiter {), Docker Sandbox, Prohibited Commands (+3 more)
+
+### Community 165 - "Community 165"
+Cohesion: 0.18
+Nodes (11): Built-in Tools (v1 — Phase 1), code:toml ([tools.web_search]), code:rust (pub struct ProcessRegistry {), code:rust (#[async_trait]), code:rust (pub struct ToolRegistry {), execute_code Sandboxing, Per-Tool Config (`config.toml`), Process Management (+3 more)
+
+### Community 166 - "Community 166"
+Cohesion: 0.18
+Nodes (11): code:rust (pub struct Database {), code:rust (pub enum SessionSearchShape {), code:toml ([memory.mem0]), code:rust (pub struct Session {), Cross-Session Context, Mem0 Vector Memory (Optional), Memory System (talos-memory), Session Lineage (+3 more)
+
+### Community 167 - "Community 167"
+Cohesion: 0.20
+Nodes (10): 11. LLM Provider Abstraction, code:rust (#[async_trait]), code:rust (pub struct Message {), code:rust (pub struct SseFrame { pub event: String, pub data: String }), code:rust (pub enum LlmError {), Error Handling, Message Types, Provider Implementations (+2 more)
+
+### Community 168 - "Community 168"
+Cohesion: 0.20
+Nodes (9): 9. Context & Memory Architecture, code:rust (pub struct ContextBudget {), code:rust (pub struct Database {), Context Budget, Hybrid Retrieval (Feature-gated: `semantic-search`), MemoryStore, SQLite Schema, Three Memory Tiers (+1 more)
+
+### Community 169 - "Community 169"
+Cohesion: 0.20
+Nodes (10): CI / Build / Rust Best Practices, CI Pipeline, code:yaml (# Every PR:), code:toml ([features]), Cross-Compilation Targets, Documentation, Feature Flags, MSRV (+2 more)
+
+### Community 170 - "Community 170"
+Cohesion: 0.20
+Nodes (10): code:block18 (Session completes → Trajectory captured → Extraction → Valid), code:rust (pub struct Trajectory {), code:rust (pub struct SkillValidation {), Evolution Trigger, Pipeline, Self-Evolution (talos-evolution — Phase 2), Skill Extraction, Skill Integration (+2 more)
+
+### Community 171 - "Community 171"
+Cohesion: 0.22
+Nodes (9): 10. Tool System, Built-in Tools (24), code:rust (#[async_trait]), code:rust (#[derive(Debug, Deserialize, JsonSchema)]), code:rust (#[async_trait]), JSON Schema Auto-Generation, Terminal Backend Abstraction, Tool Output Limits (+1 more)
+
+### Community 172 - "Community 172"
+Cohesion: 0.22
+Nodes (9): 7. Core Agent Loop, AgentEvent (broadcast to all consumers), code:rust (pub struct AgentLoop {), code:rust (async fn run(&self, session_id: Uuid, input: String) -> Resu), code:rust (async fn dispatch_tool_calls(&self, calls: &[ToolCall]) -> V), code:rust (pub enum AgentEvent {), Key Types, Loop Pseudocode (+1 more)
+
+### Community 173 - "Community 173"
+Cohesion: 0.22
+Nodes (9): API Key Management, code:rust (pub enum HttpAuth {), code:toml ([gateways.http]), code:rust (pub struct PluginLimits {), HTTP Gateway Auth, Principle of Least Privilege, Security, TLS (+1 more)
+
+### Community 174 - "Community 174"
+Cohesion: 0.22
+Nodes (9): Capability Routing, code:rust (pub type DeltaStream = Pin<Box<dyn Stream<Item = Result<Delt), code:toml ([providers.anthropic]), code:toml ([routing]), LLM Provider System (talos-llm), Provider Config, Provider Failover, Provider Trait (+1 more)
+
+### Community 175 - "Community 175"
+Cohesion: 0.25
+Nodes (8): 20. Self-Evolution (GEPA Sidecar), 5-Phase Evolution Roadmap, Architecture, code:block37 (Trajectory Collection (Rust/SQLite)), code:rust (pub struct Trajectory {), GEPA = Genetic-Pareto Prompt Evolution, Pipeline, Rust Types
+
+### Community 176 - "Community 176"
+Cohesion: 0.25
+Nodes (8): CLI CRUD, code:rust (pub struct CronJob {), code:block17 (talos cron create --schedule "0 9 * * *" --prompt "..." --de), context_from Chaining, CronJob Data Model, no_agent Script Mode, Scheduling (CronScheduler), workdir + AGENTS.md Injection
+
+### Community 177 - "Community 177"
+Cohesion: 0.29
+Nodes (7): 12. Gateway & Multi-Channel Architecture, code:rust (#[async_trait]), code:rust (pub struct GatewayRouter {), Gateway Trait, GatewayRouter, Message Formatting, Platform Tiers
+
+### Community 178 - "Community 178"
+Cohesion: 0.29
+Nodes (7): 14. Scheduling & Cron, code:rust (pub struct CronScheduler {), code:rust (pub enum CronSchedule {), CronJob Tool (LLM-facing), CronScheduler, Job Execution Flow, Schedule Parsing
+
+### Community 179 - "Community 179"
+Cohesion: 0.29
+Nodes (7): 15. Skill System, ClawHub Compatibility, code:yaml (---), Mandatory Loading, SKILL.md Format, Skill Tools, Storage & Discovery
+
+### Community 180 - "Community 180"
+Cohesion: 0.29
+Nodes (7): 18. Configuration System, code:toml ([agent]), code:block34 (~/.talon/                    # default profile), Config File: `~/.talon/config.toml`, Loading Precedence, Profile System, Validation
+
+### Community 181 - "Community 181"
+Cohesion: 0.29
+Nodes (7): 19. TUI & CLI, App State, code:block35 (+----------------------------------+), code:rust (pub struct App {), Event Loop, Slash Commands, TUI Layout (ratatui)
+
+### Community 182 - "Community 182"
+Cohesion: 0.29
+Nodes (7): 21. Observability & Logging, code:rust (pub struct UsageSummary {), code:toml ([costs.models]), Cost Tracking, Log Layers, Metrics (Feature-gated: `metrics`), Tracing Stack
+
+### Community 183 - "Community 183"
+Cohesion: 0.29
+Nodes (7): 22. Build, CI/CD & Distribution, Build, CI Pipeline (GitHub Actions), code:bash (cargo build --release                          # full build), code:dockerfile (FROM rust:1.87-bookworm AS builder), Docker, Minimum Rust Version
+
+### Community 184 - "Community 184"
+Cohesion: 0.29
+Nodes (7): Async Trait Strategy, Concurrency Limits, Error Handling, Graceful Shutdown, Rust Architecture Decisions, spawn_blocking Rule, Tokio Channel Map
+
+### Community 185 - "Community 185"
+Cohesion: 0.33
+Nodes (6): 13. Subagent & Delegation, code:rust (pub struct DelegateTaskParams {), Concurrency, Depth Limiting, Two Modes, Types
+
+### Community 186 - "Community 186"
+Cohesion: 0.33
+Nodes (6): 8. State Machine & Lifecycle, code:rust (pub enum AgentState {), code:rust (pub struct AgentSession {), code:rust (async fn run_with_shutdown(cancel: CancellationToken) {), Graceful Shutdown, Session Management
+
+### Community 187 - "Community 187"
+Cohesion: 0.33
+Nodes (6): code:rust (pub trait Tool: Send + Sync {), code:bash (cargo nextest run -p talon-core -p talon-llm), Exit Gate, Phase 1 — Core Agent Loop (Weeks 2–3), Risks, Tasks (Graphify critical path: Doc54 → Doc14 → Doc41 → Doc42)
+
+### Community 188 - "Community 188"
+Cohesion: 0.40
+Nodes (5): 23. Migration Strategy, code:bash (talon migrate --from hermes --hermes-dir ~/.hermes), From Hermes Agent (Python), From OpenClaw (TypeScript), Migration CLI
+
+### Community 189 - "Community 189"
+Cohesion: 0.40
+Nodes (5): 25. Implementation Phases, Phase 1 — Foundation (8-12 weeks), Phase 2 — Communication & Automation (6-8 weeks), Phase 3 — Intelligence & Extensions (6-8 weeks), Phase 4 — Production Hardening (4-6 weeks)
+
+### Community 190 - "Community 190"
+Cohesion: 0.40
+Nodes (5): ACP Protocol (Phase 3), code:rust (pub enum AcpMessage {), Handshake, Message Schema, Transport
+
+### Community 191 - "Community 191"
+Cohesion: 0.40
+Nodes (5): Implementation Phases, Phase 1: Core Agent (Weeks 1-6), Phase 2: Advanced Features (Weeks 7-12), Phase 3: Ecosystem (Weeks 13-18), Phase 4: Self-Improvement (Weeks 19+)
+
+### Community 192 - "Community 192"
+Cohesion: 0.40
+Nodes (5): code:bash (cargo build --workspace --release), Exit Gate, Phase 0 — Foundation (Week 1), Risks, Tasks
+
+### Community 193 - "Community 193"
+Cohesion: 0.40
+Nodes (5): code:bash (cargo nextest run -p talon-memory), Exit Gate, Phase 2 — Memory (Weeks 3–4), Risks, Tasks
+
+### Community 194 - "Community 194"
+Cohesion: 0.40
+Nodes (5): code:bash (cargo nextest run -p talon-tools), Exit Gate, Phase 3 — Tools Tier 1 (Weeks 4–5), Risks, Tasks
+
+### Community 195 - "Community 195"
+Cohesion: 0.50
+Nodes (4): Board Schema, code:rust (pub struct KanbanBoard {), Dispatcher, Kanban Multi-Agent (Phase 2)
+
+### Community 196 - "Community 196"
+Cohesion: 0.50
+Nodes (4): code:bash (cargo nextest run -p talon-tools --features integration), Exit Gate, Phase 5 — Tools Tier 2 (Weeks 6–7), Tasks
+
+### Community 197 - "Community 197"
+Cohesion: 0.50
+Nodes (4): code:bash (cargo nextest run -p talon-plugins), Exit Gate, Phase 6 — Plugin & Scheduling (Weeks 7–8), Tasks
+
+### Community 198 - "Community 198"
+Cohesion: 0.50
+Nodes (4): code:bash (cargo nextest run --workspace), Exit Gate, Phase 7 — Advanced Features (Weeks 8+), Tasks
+
+### Community 199 - "Community 199"
+Cohesion: 0.50
+Nodes (4): code:bash (TALON_LLM_API_KEY=sk-... cargo run -- --message "read ./Carg), Exit Gate, Phase 0.5 — Working Prototype (end of Week 1), Tasks
+
+### Community 200 - "Community 200"
+Cohesion: 0.50
+Nodes (4): code:bash (cargo nextest run -p talon-gateway), Exit Gate, Phase 4 — Gateway (Weeks 5–6), Tasks
+
+### Community 201 - "Community 201"
+Cohesion: 0.09
+Nodes (21): code:block1 (┌──────────────┐     HTTP      ┌───────────────────┐), code:rust (// talon-memory/src/redis_iris.rs), code:rust (// talon-memory/src/redis_store.rs), code:toml (# Cargo.toml additions for redis-memory feature), code:block5 (Redis Key Structure:), code:rust (// talon-memory/src/lib.rs), code:toml ([memory]), Depends On (+13 more)
+
+### Community 202 - "Community 202"
+Cohesion: 0.11
+Nodes (18): code:block1 (Session Start), code:rust (// Proposed addition to talon-memory), code:block3 (Conversation Turn), code:rust (pub struct LongTermMemory {), code:block5 (Session Ends), Depends On, How Iris Does It, How Iris Does It (+10 more)
+
+### Community 203 - "Community 203"
+Cohesion: 0.12
+Nodes (16): Cache Backends, Cache Invalidation, code:block1 (User prompt: "What's the weather in New York?"), code:rust (// talon-memory/src/cache.rs), code:rust (pub enum CacheBackend {), code:toml (# ~/.talon/config.toml), Config, Cost Impact Estimate (+8 more)
+
+### Community 204 - "Community 204"
+Cohesion: 0.12
+Nodes (15): code:block1 (┌─────────────────────────────────────────────┐), Depends On, Option A: Redis as Primary Memory Backend (Recommended), Option B: Adopt Iris Memory Patterns in Rust (No Redis Dependency), Option C: Redis as Optional Backend (Feature-Flagged), Recommendation: Option C, Redis Iris — Overview & Strategic Fit for Talon, Related Documents (+7 more)
+
+### Community 205 - "Community 205"
+Cohesion: 0.12
+Nodes (15): 1. Memory Should Compound, 2. Data Should Be Connected, Not Siloed, 3. Speed Is a Feature, 4. Schema-First, Not Query-First, 5. Cache Semantically, Not Literally, Broader Landscape: How Others Handle Memory, Core Thesis: "Context Is All You Need", Depends On (+7 more)
+
+### Community 206 - "Community 206"
+Cohesion: 0.10
+Nodes (20): 1. Qdrant — Rust-Native Vector Search Engine, 2. Rig — Rust LLM Agent Framework, 3. Swiftide — Rust RAG & Agent Framework, 75 — Qdrant, Rig & Swiftide: Rust Ecosystem Players, Architecture, Architecture, code:rust (use qdrant_client::Qdrant;), code:rust (// Rig's memory traits — worth studying) (+12 more)
+
+### Community 207 - "Community 207"
+Cohesion: 0.11
+Nodes (17): 73 — LanceDB: Embedded Vector + FTS Database, Architecture, code:block1 (Talon Process), code:rust (use lancedb::connect;), code:block3 (talon-memory/), code:toml ([features]), Comparison: LanceDB vs SQLite + FTS5, Integration Path for Talon (+9 more)
+
+### Community 208 - "Community 208"
+Cohesion: 0.12
+Nodes (16): 74 — mem0-rust: Rust Port of the mem0 Memory Layer, Architecture, code:block1 (Conversation), code:rust (use mem0_rust::{MemoryManager, MemoryConfig};), code:toml ([dependencies]), Comparison: mem0-rust vs claude-ltm model, Integration Path for Talon, Key Properties (+8 more)
+
+### Community 209 - "Community 209"
+Cohesion: 0.12
+Nodes (16): code:block1 (Phase 0 (Foundation)), code:block2 (Phase 0 → 0.5 → 1 → 2 → 2.5 → (wait for Phase 3) → 4 → 5 → 6), Critical Path (Longest Chain), Dependency Graph, Priority Stack (What to Build If Time Is Short), Risk-Ordered Concerns, Talon — Implementation Roadmap, Week 1 — Skeleton & Proof of Life (+8 more)
+
+### Community 210 - "Community 210"
+Cohesion: 0.12
+Nodes (15): 72 — claude-ltm-plugin: Rohi's Memory System, Architecture, Auto-Extraction, Categories, code:block1 (Session Start Hook), code:rust (// The memory model claude-ltm proves works:), Decay, Importance (1–5 stars) (+7 more)
+
+### Community 211 - "Community 211"
+Cohesion: 0.33
+Nodes (5): 71 — Brain Candidates Overview, Candidates, Quick Comparison Matrix, Recommendation Preview, The Problem
+
+### Community 212 - "Community 212"
+Cohesion: 0.40
+Nodes (5): code:bash (cargo nextest run -p talon-memory), Exit Gate, Phase 2.5 — Redis Iris Memory Layer (Week 4–5, parallel with Phase 3), Risks, Tasks
+
+### Community 213 - "Community 213"
+Cohesion: 0.50
+Nodes (3): Added, Changelog, [Unreleased]
+
 ## Knowledge Gaps
-- **1397 isolated node(s):** `Confirmed Accurate`, `1. Nature of the project — **significantly understated**`, `2. Tech stack — **wrong language cited**`, `3. The Algorithm — **severely mischaracterized**`, `4. Claude Code as primary platform — **entirely missing**` (+1392 more)
+- **1743 isolated node(s):** `Competitive Targets`, `code:block1 (talon/                         # workspace root)`, `7 Load-Bearing Types (locked after Phase 0.5 prototype, NEVER redefined)`, `Anti-Patterns — Never Do This`, `code:bash (cargo fmt --all -- --check)` (+1738 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **1 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Phase-by-Phase Build Guide` connect `Community 142` to `Community 130`, `Community 134`, `Community 136`, `Community 137`, `Community 145`, `Community 147`, `Community 148`, `Community 149`?**
+- **Why does `Talon Agent Framework — Comprehensive Specification` connect `Community 159` to `Community 163`, `Community 164`, `Community 167`, `Community 168`, `Community 171`, `Community 172`, `Community 175`, `Community 177`, `Community 178`, `Community 179`, `Community 180`, `Community 181`, `Community 182`, `Community 183`, `Community 185`, `Community 186`, `Community 188`, `Community 189`?**
+  _High betweenness centrality (0.002) - this node is a cross-community bridge._
+- **Why does `Spec: talos-agent-framework` connect `Community 157` to `Community 160`, `Community 195`, `Community 165`, `Community 166`, `Community 169`, `Community 170`, `Community 173`, `Community 174`, `Community 176`, `Community 184`, `Community 158`, `Community 156`, `Community 190`, `Community 191`?**
   _High betweenness centrality (0.001) - this node is a cross-community bridge._
-- **Why does `Cross-Reference Map — Talon Docs` connect `Community 146` to `Community 128`, `Community 129`, `Community 131`, `Community 135`, `Community 138`, `Community 139`, `Community 143`, `Community 123`?**
-  _High betweenness centrality (0.000) - this node is a cross-community bridge._
-- **Why does `Category 04 — Core Features (Docs 29–40)` connect `Community 123` to `Community 146`?**
-  _High betweenness centrality (0.000) - this node is a cross-community bridge._
-- **What connects `Confirmed Accurate`, `1. Nature of the project — **significantly understated**`, `2. Tech stack — **wrong language cited**` to the rest of the system?**
-  _1397 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Why does `11. LLM Provider Abstraction` connect `Community 167` to `Community 159`?**
+  _High betweenness centrality (0.001) - this node is a cross-community bridge._
+- **What connects `Competitive Targets`, `code:block1 (talon/                         # workspace root)`, `7 Load-Bearing Types (locked after Phase 0.5 prototype, NEVER redefined)` to the rest of the system?**
+  _1743 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.05263157894736842 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**

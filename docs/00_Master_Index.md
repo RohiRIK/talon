@@ -3,7 +3,7 @@
 
 > **Source Ecosystem:** OpenClaw (TypeScript, 375k⭐) → Hermes Agent (Python, 167k⭐)
 > **Target:** Talon — A fully native Rust autonomous AI agent
-> **Total Documents:** 65 + 6 connection/analysis docs
+> **Total Documents:** 70 + 6 connection/analysis docs
 
 ---
 
@@ -128,10 +128,25 @@
 | 08_05 | [64_Logging_And_Observability.md](08_DevOps/64_Logging_And_Observability.md) | Logging & Observability | 🚧 Draft |
 | 08_06 | [65_Release_And_Distribution.md](08_DevOps/65_Release_And_Distribution.md) | Release & Distribution Strategy | 🚧 Draft |
 
+## 09_Redis_Iris/ — Redis Iris Context Engine Integration
+
+| # | File | Title | Status |
+|---|------|-------|--------|
+| 09_01 | [66_Redis_Iris_Overview.md](09_Redis_Iris/66_Redis_Iris_Overview.md) | Redis Iris — Overview & Strategic Fit | ✅ Done |
+| 09_02 | [67_Iris_Two_Tier_Memory.md](09_Redis_Iris/67_Iris_Two_Tier_Memory.md) | Two-Tier Memory Model | ✅ Done |
+| 09_03 | [68_Iris_Technical_Integration.md](09_Redis_Iris/68_Iris_Technical_Integration.md) | Technical Integration with Talon | ✅ Done |
+| 09_04 | [69_Iris_Philosophy.md](09_Redis_Iris/69_Iris_Philosophy.md) | Philosophy & Design Principles | ✅ Done |
+| 09_05 | [70_Iris_Semantic_Cache.md](09_Redis_Iris/70_Iris_Semantic_Cache.md) | Semantic Cache & LLM Cost Optimization | ✅ Done |
+| 09_06 | [71_Brain_Candidates_Overview.md](09_Redis_Iris/71_Brain_Candidates_Overview.md) | Brain Candidates Comparison | ✅ Done |
+| 09_07 | [72_Claude_LTM_Analysis.md](09_Redis_Iris/72_Claude_LTM_Analysis.md) | claude-ltm-plugin Memory Model | ✅ Done |
+| 09_08 | [73_LanceDB_Analysis.md](09_Redis_Iris/73_LanceDB_Analysis.md) | LanceDB Embedded Vector+FTS DB | ✅ Done |
+| 09_09 | [74_Mem0_Rust_Analysis.md](09_Redis_Iris/74_Mem0_Rust_Analysis.md) | mem0-rust Agent Memory Layer | ✅ Done |
+| 09_10 | [75_Qdrant_Rig_Swiftide_Analysis.md](09_Redis_Iris/75_Qdrant_Rig_Swiftide_Analysis.md) | Qdrant, Rig & Swiftide Ecosystem | ✅ Done |
+
 ---
 
 ## Progress
 
-- **Completed:** 9 / 65
+- **Completed:** 14 / 70
 - **In progress:** 0
 - **Draft (stub):** 56

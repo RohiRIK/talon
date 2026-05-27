@@ -390,6 +390,45 @@ cargo dist build --release   # produces tarballs for all targets
 
 ---
 
+## Phase 2.5 — Redis Iris Memory Layer (Week 4–5, parallel with Phase 3)
+
+> **Edge:** Two-tier memory (working + long-term) with automatic fact extraction and semantic
+> deduplication. No other open-source agent does this. Optional Redis backend for sub-ms reads
+> and native vector search. Default SQLite for zero-dependency simplicity.
+>
+> Based on Redis Iris architecture analysis — see `docs/09_Redis_Iris/`.
+
+### Tasks
+- [ ] 2.5.1 `crates/talon-memory/src/working.rs` — `WorkingMemory` struct: message window management with automatic LLM summarization when token budget exceeded (Iris two-tier pattern, doc #67)
+- [ ] 2.5.2 `crates/talon-memory/src/facts.rs` — `FactExtractor`: LLM-powered fact extraction from conversation turns; produces structured `Fact { content, topic, entities, importance }` (Iris long-term memory pattern)
+- [ ] 2.5.3 `crates/talon-memory/src/dedup.rs` — Semantic deduplication: embed new facts, cosine-compare against existing (threshold 0.85), merge or update duplicates instead of appending
+- [ ] 2.5.4 `crates/talon-memory/src/promotion.rs` — Memory promotion: post-session hook extracts high-importance facts from working memory → long-term store
+- [ ] 2.5.5 `crates/talon-memory/src/hybrid_search.rs` — Hybrid retrieval: vector KNN + FTS5 keyword, fused with Reciprocal Rank Fusion (RRF). Works against both SQLite and Redis backends.
+- [ ] 2.5.6 `crates/talon-memory/src/cache.rs` — `SemanticCache`: embed LLM prompts, return cached response if similarity > 0.95. LRU in-memory default, Redis optional. TTL-based expiry. (Iris LangCache pattern, doc #70)
+- [ ] 2.5.7 Add `redis` crate dependency behind `feature = "redis-memory"` (tokio-comp, json features)
+- [ ] 2.5.8 `crates/talon-memory/src/redis_store.rs` — `RedisMemoryStore` impl of `MemoryStore` trait: RediSearch `FT.CREATE` with vector field, `FT.SEARCH` hybrid queries, RedisJSON storage (doc #68)
+- [ ] 2.5.9 `crates/talon-memory/src/backend.rs` — `MemoryBackend` enum: `Sqlite | Redis | Hybrid { hot: Redis, durable: Sqlite }`, selected via `config.toml` `[memory] backend = "..."` (doc #68)
+- [ ] 2.5.10 Update `ContextBuilder` (Phase 2 task 2.7) to use `WorkingMemory::compact()` for auto-summarization instead of static window trimming
+- [ ] 2.5.11 Integration tests: fact extraction round-trip, dedup merges similar facts, hybrid search returns ranked results, semantic cache hit/miss, Redis backend (feature-gated)
+- [ ] 2.5.12 `talon cache clear` + `talon cache stats` CLI subcommands
+
+### Exit Gate
+```bash
+cargo nextest run -p talon-memory
+cargo nextest run -p talon-memory --features redis-memory  # requires Redis running
+cargo run --release -- --message "remember that I prefer dark mode"
+# then in new session:
+cargo run --release -- --message "what do you know about my preferences?"
+# expects: recalls "prefers dark mode" via semantic search
+```
+
+### Risks
+- LLM cost for automatic fact extraction — mitigate with semantic cache + batch extraction (once per session, not per turn)
+- Redis not available — graceful fallback to SQLite-only; warn on startup, never crash
+- Embedding model size — `fastembed` adds 30-60MB; keep behind `semantic-search` feature flag
+
+---
+
 ## Final Acceptance Criteria
 
 - [ ] `talon init` completes in <5s, creates `~/.talon/` with valid config
@@ -405,6 +444,9 @@ cargo dist build --release   # produces tarballs for all targets
 - [ ] Parallel delegation spawns 3+ subagents, merged result
 - [ ] CI matrix green on linux/macos/windows
 - [ ] FTS5 session search returns results across projects
+- [ ] Two-tier memory: auto fact extraction + semantic dedup operational
+- [ ] Semantic cache reduces repeated LLM calls (verified with cron test)
+- [ ] Redis memory backend works when `feature = "redis-memory"` enabled
 
 ## Beat the Competition
 
