@@ -1,6 +1,11 @@
 mod anthropic;
 pub use anthropic::AnthropicProvider;
 
+#[cfg(any(test, feature = "mock"))]
+pub mod mock;
+#[cfg(any(test, feature = "mock"))]
+pub use mock::MockProvider;
+
 use std::{future::Future, pin::Pin};
 
 use serde::{Deserialize, Serialize};

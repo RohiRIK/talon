@@ -1,3 +1,5 @@
+pub mod dispatcher;
+
 use std::{future::Future, pin::Pin};
 
 use serde_json::Value;
