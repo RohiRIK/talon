@@ -142,11 +142,12 @@
 | 09_08 | [73_LanceDB_Analysis.md](09_Redis_Iris/73_LanceDB_Analysis.md) | LanceDB Embedded Vector+FTS DB | ✅ Done |
 | 09_09 | [74_Mem0_Rust_Analysis.md](09_Redis_Iris/74_Mem0_Rust_Analysis.md) | mem0-rust Agent Memory Layer | ✅ Done |
 | 09_10 | [75_Qdrant_Rig_Swiftide_Analysis.md](09_Redis_Iris/75_Qdrant_Rig_Swiftide_Analysis.md) | Qdrant, Rig & Swiftide Ecosystem | ✅ Done |
+| 09_11 | [76_Honker_Reactive_Layer.md](09_Redis_Iris/76_Honker_Reactive_Layer.md) | Honker — SQLite Reactive Layer | ✅ Done |
 
 ---
 
 ## Progress
 
-- **Completed:** 14 / 70
+- **Completed:** 15 / 70
 - **In progress:** 0
-- **Draft (stub):** 56
+- **Draft (stub):** 55

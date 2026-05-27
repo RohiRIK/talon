@@ -24,3 +24,6 @@ All notable changes to the Talon project will be documented in this file.
 - Updated `00_Master_Index.md` — Added docs 71–75, total doc count 70→75, completed count 14→19
 - Updated graphify knowledge graph — 3026→3130 nodes, 2892→2989 edges, 206→214 communities
 - **Emerging recommendation**: claude-ltm memory model as design blueprint + LanceDB as storage engine (feature-flagged: `sqlite-memory` default vs `lance-memory`)
+- **Honker reactive layer** (`docs/09_Redis_Iris/76_Honker_Reactive_Layer.md`) — SQLite NOTIFY/LISTEN + durable queues + streams + scheduler as Talon's nervous system. Pairs with talon-ltm (own Rust reimplementation of claude-ltm blueprint) + LanceDB. Graph layer optional/later.
+- Updated `00_Master_Index.md` — Added doc 76, completed count 14→15
+- **Architecture decision:** claude-ltm is a **blueprint to reimplement** as `talon-ltm` in Rust, NOT a direct dependency. Honker adds reactive plumbing on top. Graph is optional.
