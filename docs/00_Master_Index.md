@@ -3,7 +3,7 @@
 
 > **Source Ecosystem:** OpenClaw (TypeScript, 375k⭐) → Hermes Agent (Python, 167k⭐)
 > **Target:** Talon — A fully native Rust autonomous AI agent
-> **Total Documents:** 70 + 6 connection/analysis docs
+> **Total Documents:** 70 + 6 connection/analysis docs + 3 TUI docs
 
 ---
 
@@ -146,8 +146,18 @@
 
 ---
 
+## 10_TUI/ — Terminal User Interface
+
+| # | File | Title | Status |
+|---|------|-------|--------|
+| 10_01 | [77_TUI_Landscape_Overview.md](10_TUI/77_TUI_Landscape_Overview.md) | TUI Landscape — Frameworks & AI Agent Interfaces | ✅ Done |
+| 10_02 | [78_TUI_Technology_Selection.md](10_TUI/78_TUI_Technology_Selection.md) | Technology Selection — Ratatui + Crossterm + MVU | ✅ Done |
+| 10_03 | [79_Terminal_Rendering_Capabilities.md](10_TUI/79_Terminal_Rendering_Capabilities.md) | Terminal Rendering — Images, Markdown, Accessibility | ✅ Done |
+
+---
+
 ## Progress
 
-- **Completed:** 15 / 70
+- **Completed:** 18 / 70
 - **In progress:** 0
 - **Draft (stub):** 55

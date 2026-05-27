@@ -27,5 +27,10 @@ All notable changes to the Talon project will be documented in this file.
 - **Honker reactive layer** (`docs/09_Redis_Iris/76_Honker_Reactive_Layer.md`) — SQLite NOTIFY/LISTEN + durable queues + streams + scheduler as Talon's nervous system. Pairs with talon-ltm (own Rust reimplementation of claude-ltm blueprint) + LanceDB. Graph layer optional/later.
 - Updated `00_Master_Index.md` — Added doc 76, completed count 14→15
 - **Architecture decision:** claude-ltm is a **blueprint to reimplement** as `talon-ltm` in Rust, NOT a direct dependency. Honker adds reactive plumbing on top. Graph is optional.
+- **TUI research & technology selection** (`docs/10_TUI/`) — 3 new documents:
+  - `77_TUI_Landscape_Overview.md` — Comprehensive comparison of TUI frameworks (Ratatui, Ink, Textual, Bubbletea, Cursive) + how AI CLIs (Claude Code, OpenCode, Aider, Amazon Q) build their interfaces
+  - `78_TUI_Technology_Selection.md` — Decision: Ratatui + Crossterm + MVU architecture. Component design (ChatView, InputBar, ToolPanel, StatusBar), async integration, adaptive layout, essential crates list
+  - `79_Terminal_Rendering_Capabilities.md` — Image protocols (Kitty/Sixel/iTerm2), streaming markdown rendering, OSC 8 clickable links, accessibility (`NO_COLOR`, `--accessible`), multiplexer awareness, web hybrid (xterm.js), diff rendering
+- Updated `00_Master_Index.md` — Added section 10_TUI (3 docs), completed count 15→18
 - **Architecture decision: LanceDB from day one** — dropped `sqlite-memory` vs `lance-memory` feature flag. LanceDB is the sole memory backend (FTS + vectors + hybrid search). SQLite remains for non-memory concerns (sessions, config, Honker coordination). One backend, one path, no throwaway code.
 - Updated docs 72, 73, 76 to reflect unified architecture: talon-ltm (claude-ltm blueprint) + LanceDB (storage) + Honker (reactive layer). Graph optional/later.
