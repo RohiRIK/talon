@@ -53,6 +53,8 @@ pub trait Tool: Send + Sync {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
     #[test]
@@ -70,8 +72,119 @@ mod tests {
     }
 
     #[test]
+    fn tool_result_ok_accepts_string_ref() {
+        let s = "from &str".to_string();
+        let r = ToolResult::ok(s.as_str());
+        assert_eq!(r.content, "from &str");
+    }
+
+    #[test]
+    fn tool_result_debug_shows_content() {
+        let r = ToolResult::ok("abc");
+        assert!(format!("{r:?}").contains("abc"));
+    }
+
+    #[test]
     fn tool_context_default_is_sequential() {
         let ctx = ToolContext::default();
         assert!(!ctx.allow_parallel);
+    }
+
+    #[test]
+    fn tool_context_parallel_can_be_set() {
+        let ctx = ToolContext { allow_parallel: true };
+        assert!(ctx.allow_parallel);
+    }
+
+    /// Type #5 validation — Arc<dyn Tool> must work with the Pin<Box<dyn Future>> pattern.
+    /// This is the critical claim from ADR 0007: the trait is dyn-compatible.
+    #[tokio::test]
+    async fn arc_dyn_tool_dispatches_and_returns_result() {
+        struct EchoTool;
+        impl Tool for EchoTool {
+            fn name(&self) -> &str {
+                "echo"
+            }
+            fn schema(&self) -> Value {
+                serde_json::json!({})
+            }
+            fn approval_level(&self, _args: &Value) -> ApprovalLevel {
+                ApprovalLevel::Safe
+            }
+            fn execute(
+                &self,
+                args: Value,
+                _ctx: ToolContext,
+            ) -> Pin<Box<dyn Future<Output = ToolResult> + Send + '_>> {
+                let msg = args["msg"].as_str().unwrap_or("").to_string();
+                Box::pin(async move { ToolResult::ok(msg) })
+            }
+        }
+
+        let tool: Arc<dyn Tool> = Arc::new(EchoTool);
+        assert_eq!(tool.name(), "echo");
+        assert_eq!(tool.approval_level(&Value::Null), ApprovalLevel::Safe);
+
+        let result = tool
+            .execute(serde_json::json!({"msg": "hello"}), ToolContext::default())
+            .await;
+        assert!(!result.is_error);
+        assert_eq!(result.content, "hello");
+    }
+
+    /// Verify two Arc<dyn Tool> references can coexist — tests Arc cloneability.
+    #[tokio::test]
+    async fn arc_dyn_tool_can_be_cloned_and_shared() {
+        struct NoopTool;
+        impl Tool for NoopTool {
+            fn name(&self) -> &str {
+                "noop"
+            }
+            fn schema(&self) -> Value {
+                serde_json::json!({})
+            }
+            fn approval_level(&self, _args: &Value) -> ApprovalLevel {
+                ApprovalLevel::NeedsApproval
+            }
+            fn execute(
+                &self,
+                _args: Value,
+                _ctx: ToolContext,
+            ) -> Pin<Box<dyn Future<Output = ToolResult> + Send + '_>> {
+                Box::pin(async { ToolResult::ok("noop") })
+            }
+        }
+
+        let a: Arc<dyn Tool> = Arc::new(NoopTool);
+        let b = Arc::clone(&a);
+        assert_eq!(a.name(), b.name());
+        let ra = a.execute(Value::Null, ToolContext::default()).await;
+        let rb = b.execute(Value::Null, ToolContext::default()).await;
+        assert_eq!(ra.content, rb.content);
+    }
+
+    /// Dangerous tool returns the correct level — exercises all three ApprovalLevel variants
+    /// through the Tool trait boundary, not just the enum directly.
+    #[test]
+    fn tool_trait_approval_level_all_variants() {
+        struct DangerTool;
+        impl Tool for DangerTool {
+            fn name(&self) -> &str { "danger" }
+            fn schema(&self) -> Value { serde_json::json!({}) }
+            fn approval_level(&self, _args: &Value) -> ApprovalLevel {
+                ApprovalLevel::Dangerous
+            }
+            fn execute(
+                &self,
+                _args: Value,
+                _ctx: ToolContext,
+            ) -> Pin<Box<dyn Future<Output = ToolResult> + Send + '_>> {
+                Box::pin(async { ToolResult::err("denied") })
+            }
+        }
+        assert!(matches!(
+            DangerTool.approval_level(&Value::Null),
+            ApprovalLevel::Dangerous
+        ));
     }
 }

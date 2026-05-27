@@ -28,4 +28,25 @@ mod tests {
     fn approval_level_debug() {
         assert_eq!(format!("{:?}", ApprovalLevel::Dangerous), "Dangerous");
     }
+
+    #[test]
+    fn all_three_variants_are_distinct() {
+        assert_ne!(ApprovalLevel::Safe, ApprovalLevel::NeedsApproval);
+        assert_ne!(ApprovalLevel::NeedsApproval, ApprovalLevel::Dangerous);
+        assert_ne!(ApprovalLevel::Safe, ApprovalLevel::Dangerous);
+    }
+
+    #[test]
+    fn pattern_match_safe() {
+        let level = ApprovalLevel::Safe;
+        let auto_approved = matches!(level, ApprovalLevel::Safe | ApprovalLevel::NeedsApproval);
+        assert!(auto_approved);
+    }
+
+    #[test]
+    fn pattern_match_dangerous_requires_gate() {
+        let level = ApprovalLevel::Dangerous;
+        let needs_gate = matches!(level, ApprovalLevel::Dangerous);
+        assert!(needs_gate);
+    }
 }

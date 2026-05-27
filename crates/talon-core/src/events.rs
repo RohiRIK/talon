@@ -110,4 +110,60 @@ mod tests {
         let s = format!("{ev:?}");
         assert!(s.contains("call-1"));
     }
+
+    #[test]
+    fn agent_event_llm_request_debug() {
+        let s = format!("{:?}", AgentEvent::LlmRequest);
+        assert_eq!(s, "AgentEvent::LlmRequest");
+    }
+
+    #[test]
+    fn agent_event_llm_response_debug() {
+        let s = format!("{:?}", AgentEvent::LlmResponse);
+        assert_eq!(s, "AgentEvent::LlmResponse");
+    }
+
+    #[test]
+    fn agent_event_tool_result_debug_shows_id() {
+        let ev = AgentEvent::ToolResult {
+            id: "r1".to_string(),
+            content: "output".to_string(),
+            is_error: false,
+        };
+        let s = format!("{ev:?}");
+        assert!(s.contains("r1"));
+    }
+
+    #[tokio::test]
+    async fn approval_tx_can_send_true() {
+        let (tx, rx) = oneshot::channel::<bool>();
+        let ev = AgentEvent::ApprovalRequested {
+            call_id: "c".to_string(),
+            tool_name: "t".to_string(),
+            args: serde_json::json!({}),
+            tx,
+        };
+        // Extract tx and send approval
+        if let AgentEvent::ApprovalRequested { tx, .. } = ev {
+            tx.send(true).expect("send approval");
+        }
+        let approved = rx.await.expect("receive");
+        assert!(approved);
+    }
+
+    #[tokio::test]
+    async fn approval_tx_can_deny() {
+        let (tx, rx) = oneshot::channel::<bool>();
+        let ev = AgentEvent::ApprovalRequested {
+            call_id: "c2".to_string(),
+            tool_name: "rm_rf".to_string(),
+            args: serde_json::json!({}),
+            tx,
+        };
+        if let AgentEvent::ApprovalRequested { tx, .. } = ev {
+            tx.send(false).expect("send denial");
+        }
+        let approved = rx.await.expect("receive");
+        assert!(!approved);
+    }
 }

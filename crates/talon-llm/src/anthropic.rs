@@ -102,4 +102,36 @@ mod tests {
         let p = AnthropicProvider::new("key".to_string());
         assert_eq!(p.model, "claude-haiku-4-5-20251001");
     }
+
+    #[test]
+    fn provider_uses_env_model_override() {
+        // SAFETY: nextest runs each test in an isolated process with no concurrent threads
+        // accessing env vars, so set_var/remove_var are race-free here.
+        unsafe {
+            std::env::set_var("TALON_LLM_MODEL", "claude-opus-4-7");
+        }
+        let p = AnthropicProvider::new("key".to_string());
+        // SAFETY: same process-isolation guarantee as above.
+        unsafe {
+            std::env::remove_var("TALON_LLM_MODEL");
+        }
+        assert_eq!(p.model, "claude-opus-4-7");
+    }
+
+    #[test]
+    fn provider_stores_api_key() {
+        let p = AnthropicProvider::new("sk-test-123".to_string());
+        assert_eq!(p.api_key, "sk-test-123");
+    }
+
+    /// LlmProvider trait is dyn-compatible — Arc<dyn LlmProvider> must compile.
+    /// This is the Type #4 dyn-compatibility check analogous to Arc<dyn Tool>.
+    #[test]
+    fn arc_dyn_llm_provider_is_constructible() {
+        use std::sync::Arc;
+        use crate::LlmProvider;
+        let provider: Arc<dyn LlmProvider> = Arc::new(AnthropicProvider::new("key".to_string()));
+        // If this compiles, the trait is dyn-compatible — the test body is the assertion.
+        let _ = provider;
+    }
 }
