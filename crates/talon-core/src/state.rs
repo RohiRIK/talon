@@ -117,4 +117,39 @@ mod tests {
     fn thinking_is_not_terminal() {
         assert!(!AgentState::Thinking.is_terminal());
     }
+
+    #[test]
+    fn calling_tool_is_not_terminal() {
+        assert!(!AgentState::CallingTool { tool_name: "x".to_string() }.is_terminal());
+    }
+
+    #[test]
+    fn idle_to_calling_tool_is_invalid() {
+        let s = AgentState::Idle;
+        assert!(s.transition(AgentState::CallingTool { tool_name: "t".to_string() }).is_err());
+    }
+
+    #[test]
+    fn idle_to_failed_is_invalid() {
+        let s = AgentState::Idle;
+        assert!(s.transition(AgentState::Failed("x".to_string())).is_err());
+    }
+
+    #[test]
+    fn calling_tool_to_completed_is_invalid() {
+        let s = AgentState::CallingTool { tool_name: "t".to_string() };
+        assert!(s.transition(AgentState::Completed).is_err());
+    }
+
+    #[test]
+    fn failed_to_thinking_is_invalid() {
+        let s = AgentState::Failed("oops".to_string());
+        assert!(s.transition(AgentState::Thinking).is_err());
+    }
+
+    #[test]
+    fn completed_to_failed_is_invalid() {
+        let s = AgentState::Completed;
+        assert!(s.transition(AgentState::Failed("x".to_string())).is_err());
+    }
 }

@@ -336,7 +336,6 @@ mod tests {
 
     #[tokio::test]
     async fn agent_run_unknown_tool_stops_with_error() {
-        let (tx, _rx) = make_channel();
         let provider = Arc::new(MockProvider::new(vec![LlmResponse {
             content: vec![ContentBlock::ToolUse {
                 id: "t1".to_string(),
@@ -346,16 +345,86 @@ mod tests {
             stop_reason: "tool_use".to_string(),
         }]));
         // No tools registered — unknown tool defaults to Dangerous.
-        // With no receiver to approve, the membrane sends to channel, nobody replies on oneshot.
-        // The Dangerous path requires a gateway to respond. In this test we abort by
-        // dropping the rx so the membrane gets a closed channel on send.
-        drop(tx.clone()); // deliberately close the channel
-        // Re-create with a fresh pair but no handler for ApprovalRequested.
-        let (tx2, _rx2) = mpsc::channel(1);
-        let mut agent = Agent::new(provider, ToolDispatcher::new(), tx2);
-        // Drop _rx2 after one event fills the buffer so ApprovalRequested send fails.
-        drop(_rx2);
+        // Drop the receiver so the membrane's send on the approval event fails immediately.
+        let (tx, rx) = mpsc::channel::<AgentEvent>(1);
+        drop(rx);
+        let mut agent = Agent::new(provider, ToolDispatcher::new(), tx);
         let result = agent.run("sess-5", "ghost".to_string()).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn agent_run_emits_llm_request_and_response_events() {
+        let (tx, mut rx) = make_channel();
+        let provider = Arc::new(MockProvider::text("answer", "end_turn"));
+        let mut agent = Agent::new(provider, make_dispatcher(), tx);
+        agent.run("sess-6", "question".to_string()).await.expect("run");
+
+        let events: Vec<_> = {
+            let mut v = Vec::new();
+            while let Ok(e) = rx.try_recv() { v.push(e); }
+            v
+        };
+        assert!(events.iter().any(|e| matches!(e, AgentEvent::LlmRequest)));
+        assert!(events.iter().any(|e| matches!(e, AgentEvent::LlmResponse)));
+    }
+
+    #[tokio::test]
+    async fn agent_run_two_tools_in_one_response() {
+        let (tx, mut rx) = make_channel();
+        let provider = Arc::new(MockProvider::new(vec![
+            LlmResponse {
+                content: vec![
+                    ContentBlock::ToolUse {
+                        id: "t1".to_string(),
+                        name: "echo".to_string(),
+                        input: json!({"message": "first"}),
+                    },
+                    ContentBlock::ToolUse {
+                        id: "t2".to_string(),
+                        name: "echo".to_string(),
+                        input: json!({"message": "second"}),
+                    },
+                ],
+                stop_reason: "tool_use".to_string(),
+            },
+            LlmResponse {
+                content: vec![ContentBlock::Text { text: "both done".to_string() }],
+                stop_reason: "end_turn".to_string(),
+            },
+        ]));
+
+        let mut agent = Agent::new(provider, make_dispatcher(), tx);
+        agent.run("sess-7", "two tools".to_string()).await.expect("run");
+
+        let events: Vec<_> = {
+            let mut v = Vec::new();
+            while let Ok(e) = rx.try_recv() { v.push(e); }
+            v
+        };
+        let tool_called_count = events.iter().filter(|e| matches!(e, AgentEvent::ToolCalled { .. })).count();
+        let tool_result_count = events.iter().filter(|e| matches!(e, AgentEvent::ToolResult { .. })).count();
+        assert_eq!(tool_called_count, 2, "expected 2 ToolCalled events, got {tool_called_count}");
+        assert_eq!(tool_result_count, 2, "expected 2 ToolResult events, got {tool_result_count}");
+        assert!(events.iter().any(|e| matches!(e, AgentEvent::Completed)));
+    }
+
+    #[tokio::test]
+    async fn agent_run_no_text_in_end_turn_still_completes() {
+        let (tx, mut rx) = make_channel();
+        // Response with no text blocks — just stop_reason "end_turn"
+        let provider = Arc::new(MockProvider::new(vec![LlmResponse {
+            content: vec![],
+            stop_reason: "end_turn".to_string(),
+        }]));
+        let mut agent = Agent::new(provider, make_dispatcher(), tx);
+        agent.run("sess-8", "quiet".to_string()).await.expect("run");
+
+        let events: Vec<_> = {
+            let mut v = Vec::new();
+            while let Ok(e) = rx.try_recv() { v.push(e); }
+            v
+        };
+        assert!(events.iter().any(|e| matches!(e, AgentEvent::Completed)));
     }
 }

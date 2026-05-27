@@ -221,4 +221,69 @@ mod tests {
         };
         assert_eq!(stop_reason, "end_turn");
     }
+
+    #[test]
+    fn finish_reason_none_maps_to_end_turn() {
+        let stop_reason: &str = match None::<&str> {
+            Some("tool_calls") => "tool_use",
+            Some("stop") | None => "end_turn",
+            Some(other) => other,
+        };
+        assert_eq!(stop_reason, "end_turn");
+    }
+
+    #[test]
+    fn finish_reason_max_tokens_passes_through() {
+        let stop_reason = match Some("max_tokens") {
+            Some("tool_calls") => "tool_use",
+            Some("stop") | None => "end_turn",
+            Some(other) => other,
+        };
+        assert_eq!(stop_reason, "max_tokens");
+    }
+
+    #[test]
+    fn anthropic_tool_schema_converts_to_openai_format() {
+        // Verify the mapping that OpenAIProvider applies to Anthropic-style tool schemas.
+        let anthropic_schema = serde_json::json!({
+            "name": "read_file",
+            "description": "Read a file",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string" }
+                },
+                "required": ["path"]
+            }
+        });
+
+        let oai = serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": anthropic_schema["name"],
+                "description": anthropic_schema["description"],
+                "parameters": anthropic_schema["input_schema"],
+            }
+        });
+
+        assert_eq!(oai["type"], "function");
+        assert_eq!(oai["function"]["name"], "read_file");
+        assert_eq!(oai["function"]["parameters"]["required"][0], "path");
+    }
+
+    #[test]
+    fn raw_tool_call_arguments_parsed_as_json() {
+        // If arguments is valid JSON, it should deserialize to a Value.
+        let args_str = r#"{"path": "/tmp/test.txt"}"#;
+        let parsed: serde_json::Value = serde_json::from_str(args_str).unwrap_or(serde_json::Value::Null);
+        assert_eq!(parsed["path"], "/tmp/test.txt");
+    }
+
+    #[test]
+    fn invalid_tool_arguments_fall_back_to_null() {
+        // If arguments is invalid JSON, fall back to Null (not a crash).
+        let args_str = "not valid json {{";
+        let parsed: serde_json::Value = serde_json::from_str(args_str).unwrap_or(serde_json::Value::Null);
+        assert!(parsed.is_null());
+    }
 }

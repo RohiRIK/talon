@@ -242,4 +242,18 @@ mod tests {
         let err = d.dispatch_parallel(calls).await.unwrap_err();
         assert!(err.to_string().contains("ghost"));
     }
+
+    #[tokio::test]
+    async fn sequential_dispatch_empty_returns_empty() {
+        let d = make_dispatcher();
+        let results = d.dispatch_sequential(vec![]).await.expect("empty ok");
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn parallel_dispatch_empty_returns_empty() {
+        let d = make_dispatcher();
+        let results = d.dispatch_parallel(vec![]).await.expect("empty ok");
+        assert!(results.is_empty());
+    }
 }
