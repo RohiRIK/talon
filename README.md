@@ -2,7 +2,7 @@
 
 > A fully native Rust AI agent. Single binary. Multi-channel. Persistent cross-project memory.
 
-[![CI](https://github.com/RohiRIK/talon/actions/workflows/ci.yml/badge.svg)](https://github.com/RohiRIK/talon/actions)
+[![CI](https://github.com/rohirikman/talon/actions/workflows/ci.yml/badge.svg)](https://github.com/rohirikman/talon/actions)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
 
 ---
@@ -22,6 +22,22 @@ Every other open-source AI agent has at least one of these problems:
 Talon's answer: **one pre-built binary, zero runtime dependencies, SQLite-backed FTS5 memory that travels with you across projects and channels.**
 
 Start a session on Telegram, continue it in the CLI, search it from the HTTP API — same conversation context, no cloud required.
+
+---
+
+## Install
+
+```bash
+curl -fsSL https://talon.sh/install | sh
+```
+
+The installer verifies the SHA256 checksum and cosign signature before installing. Requires `cosign` for signature verification (optional but recommended).
+
+Or install from source:
+
+```bash
+cargo install talon
+```
 
 ---
 
@@ -92,7 +108,7 @@ The full architecture is documented across 65 spec documents in `docs/`. The imp
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 0 | Foundation — workspace, CI, Docker | Planned |
+| 0 | Foundation — workspace, CI, Docker | **In Progress** |
 | 0.5 | Working prototype — validate core loop | Planned |
 | 1 | Core agent loop — LLM + tool trait + approval | Planned |
 | 2 | Memory — SQLite, FTS5, context assembly | Planned |

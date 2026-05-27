@@ -1,0 +1,77 @@
+[workspace]
+members = [
+    "talon",
+    "crates/talon-core",
+    "crates/talon-llm",
+    "crates/talon-memory",
+    "crates/talon-tools",
+    "crates/talon-gateway",
+    "crates/talon-plugins",
+]
+resolver = "2"
+
+[workspace.package]
+version      = "0.2.0"
+edition      = "2024"
+authors      = ["Rohi Rikman <rohi5054@gmail.com>"]
+license      = "MIT OR Apache-2.0"
+repository   = "https://github.com/rohirikman/talon"
+rust-version = "1.88"
+
+# ---------------------------------------------------------------------------
+# Shared dependencies — all crates inherit from here.
+# Pin minor versions; Dependabot will bump SHAs weekly.
+# ---------------------------------------------------------------------------
+[workspace.dependencies]
+# Async runtime
+tokio            = { version = "1",    features = ["full"] }
+tokio-stream     = "0.1"
+futures          = "0.3"
+
+# Serialization
+serde            = { version = "1",    features = ["derive"] }
+serde_json       = "1"
+
+# HTTP
+reqwest          = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
+# Web framework
+axum             = "0.7"
+
+# Database — SQLite (bundled, FTS5 via vtab feature)
+rusqlite         = { version = "0.32", features = ["bundled", "vtab"] }
+deadpool-sqlite  = "0.9"
+
+# Memory — LanceDB vector + FTS + hybrid search (Phase 2.5)
+lancedb          = "0.9"
+arrow-array      = "52"
+
+# TUI
+ratatui          = "0.28"
+crossterm        = "0.28"
+
+# Telegram
+teloxide         = { version = "0.13", features = ["macros"] }
+
+# CLI
+clap             = { version = "4",    features = ["derive"] }
+
+# WASM plugin host (Phase 6, feature-flagged)
+wasmtime         = "24"
+
+# OS keychain
+keyring          = "3"
+
+# Error handling
+thiserror        = "1"
+anyhow           = "1"
+
+# Observability
+tracing              = "0.1"
+tracing-subscriber   = { version = "0.3", features = ["env-filter"] }
+
+# Identifiers + time
+uuid    = { version = "1", features = ["v4"] }
+chrono  = { version = "0.4", features = ["serde"] }
+
+# NOTE: async-trait is intentionally absent — edition 2024 has native async fn in traits.

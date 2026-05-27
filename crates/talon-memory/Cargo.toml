@@ -1,0 +1,33 @@
+[package]
+name        = "talon-memory"
+description = "Talon memory layer — SQLite/FTS5 sessions, LanceDB LTM, working memory, fact extraction."
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+rust-version.workspace = true
+
+[dependencies]
+tokio.workspace         = true
+tokio-stream.workspace  = true
+futures.workspace       = true
+serde.workspace         = true
+serde_json.workspace    = true
+rusqlite.workspace      = true
+deadpool-sqlite.workspace = true
+thiserror.workspace     = true
+tracing.workspace       = true
+uuid.workspace          = true
+chrono.workspace        = true
+
+[dependencies.lancedb]
+workspace = true
+optional  = true
+
+[dependencies.arrow-array]
+workspace = true
+optional  = true
+
+[features]
+ltm = ["dep:lancedb", "dep:arrow-array"]

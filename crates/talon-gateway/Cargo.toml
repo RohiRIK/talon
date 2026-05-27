@@ -1,0 +1,29 @@
+[package]
+name        = "talon-gateway"
+description = "Talon gateways — CLI, TUI (ratatui), HTTP (axum), Telegram (teloxide)."
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+rust-version.workspace = true
+
+[dependencies]
+talon-core.path   = "../talon-core"
+
+tokio.workspace      = true
+futures.workspace    = true
+serde.workspace      = true
+serde_json.workspace = true
+axum.workspace       = true
+ratatui.workspace    = true
+crossterm.workspace  = true
+thiserror.workspace  = true
+tracing.workspace    = true
+
+[dependencies.teloxide]
+workspace = true
+optional  = true
+
+[features]
+telegram = ["dep:teloxide"]

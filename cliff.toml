@@ -1,0 +1,56 @@
+# git-cliff configuration — generates CHANGELOG.md from conventional commits.
+# Docs: https://git-cliff.org/docs/configuration
+
+[changelog]
+header = """
+# Changelog\n
+All notable changes to Talon are documented here.\n
+"""
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }} ([`{{ commit.id | truncate(length=7, end="") }}`]({{ remote.github.url }}/commit/{{ commit.id }}))\
+{% endfor %}
+{% endfor %}\n
+"""
+footer = ""
+trim = true
+
+[git]
+# Conventional commits only
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+
+# Map commit types to changelog sections
+commit_parsers = [
+    { message = "^feat",      group = "Features" },
+    { message = "^fix",       group = "Bug Fixes" },
+    { message = "^perf",      group = "Performance" },
+    { message = "^refactor",  group = "Refactor" },
+    { message = "^docs",      group = "Documentation" },
+    { message = "^test",      group = "Testing" },
+    { message = "^ci",        group = "CI/CD" },
+    { message = "^chore",     skip = true },
+    { message = "^release",   skip = true },
+]
+
+# Scope → crate mapping (used for per-crate release notes)
+# Scopes: core, llm, memory, tools, gateway, plugins, ci, release
+protect_breaking_commits = false
+filter_commits = true
+tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+"
+skip_tags = "v0\\.0\\..*-test"   # skip dry-run tags
+ignore_tags = ""
+topo_order = false
+sort_commits = "newest"
+
+[remote.github]
+owner = "rohirikman"
+repo  = "talon"

@@ -1,0 +1,17 @@
+# Default owner for everything not matched below.
+* @rohirikman
+
+# Crate-level ownership (expand as the team grows)
+/crates/talon-core/     @rohirikman
+/crates/talon-llm/      @rohirikman
+/crates/talon-memory/   @rohirikman
+/crates/talon-tools/    @rohirikman
+/crates/talon-gateway/  @rohirikman
+/crates/talon-plugins/  @rohirikman
+/talon/                 @rohirikman
+
+# CI / release pipeline
+/.github/workflows/     @rohirikman
+
+# Security policy
+/.github/SECURITY.md    @rohirikman

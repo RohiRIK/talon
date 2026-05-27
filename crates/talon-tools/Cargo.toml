@@ -1,0 +1,19 @@
+[package]
+name        = "talon-tools"
+description = "Built-in tools: file I/O, terminal sandbox, web, MCP adapter, session search."
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+rust-version.workspace = true
+
+[dependencies]
+talon-core.path   = "../talon-core"
+
+tokio.workspace      = true
+serde.workspace      = true
+serde_json.workspace = true
+reqwest.workspace    = true
+thiserror.workspace  = true
+tracing.workspace    = true

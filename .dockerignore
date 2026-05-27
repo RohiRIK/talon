@@ -1,0 +1,11 @@
+target/
+.git/
+docs/
+graphify-out/
+dogfood-output/
+*.md
+!README.md
+.env
+*.db
+*.db-shm
+*.db-wal

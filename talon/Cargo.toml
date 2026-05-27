@@ -1,0 +1,36 @@
+[package]
+name        = "talon"
+description = "Single-binary AI agent — persistent memory, multi-channel, WASM plugins."
+keywords    = ["ai", "agent", "llm", "memory", "cli"]
+categories  = ["command-line-utilities"]
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+rust-version.workspace = true
+
+[[bin]]
+name = "talon"
+path = "src/main.rs"
+
+[dependencies]
+talon-core    = { path = "../crates/talon-core" }
+talon-llm     = { path = "../crates/talon-llm" }
+talon-memory  = { path = "../crates/talon-memory" }
+talon-gateway = { path = "../crates/talon-gateway" }
+talon-tools   = { path = "../crates/talon-tools" }
+
+tokio.workspace              = true
+tracing.workspace            = true
+tracing-subscriber.workspace = true
+clap.workspace               = true
+anyhow.workspace             = true
+keyring.workspace            = true
+serde.workspace              = true
+serde_json.workspace         = true
+reqwest.workspace            = true
+uuid.workspace               = true
+
+[dev-dependencies]
+tempfile = "3"

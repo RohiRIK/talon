@@ -1,0 +1,19 @@
+[package]
+name        = "talon-core"
+description = "Talon agent loop, approval membrane, tool dispatcher, and state machine."
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+rust-version.workspace = true
+
+[dependencies]
+tokio.workspace     = true
+futures.workspace   = true
+serde.workspace     = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace   = true
+uuid.workspace      = true
+chrono.workspace    = true

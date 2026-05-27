@@ -1,0 +1,33 @@
+version: 2
+updates:
+  # Rust / Cargo dependency bumps
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - deps
+    open-pull-requests-limit: 10
+    groups:
+      # Group all patch-level Rust dep bumps into one PR
+      patch-updates:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions SHA bumps
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - deps
+    open-pull-requests-limit: 5

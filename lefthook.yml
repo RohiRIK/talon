@@ -1,0 +1,18 @@
+# lefthook — git hooks managed as code.
+# Install: cargo install lefthook && lefthook install
+# Docs: https://github.com/evilmartians/lefthook
+
+pre-commit:
+  parallel: false   # sequential: fmt must pass before clippy
+  commands:
+    fmt:
+      run: cargo fmt --all -- --check
+      fail_text: "Run `cargo fmt --all` to fix formatting"
+
+    clippy:
+      run: cargo clippy --workspace --all-targets -- -D warnings -D clippy::unwrap_used -D clippy::expect_used
+      fail_text: "Fix clippy warnings before committing"
+
+    test:
+      run: cargo nextest run --workspace
+      fail_text: "Tests must pass before committing"

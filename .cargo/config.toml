@@ -1,0 +1,7 @@
+[alias]
+# t = run all tests via nextest
+t = "nextest run"
+# c = clippy with all deny-as-error flags matching CI
+c = "clippy --workspace --all-targets -- -D warnings -D clippy::unwrap_used -D clippy::expect_used"
+# b = release build
+b = "build --workspace --release"

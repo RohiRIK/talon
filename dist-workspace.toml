@@ -1,0 +1,41 @@
+# cargo-dist workspace configuration.
+# Docs: https://opensource.axo.dev/cargo-dist/book/reference/config.html
+
+[dist]
+# cargo-dist version this config was generated for
+cargo-dist-version = "0.27.0"
+
+# CI backend
+ci = "github"
+
+# Installers to generate
+installers = ["shell", "homebrew"]
+
+# Homebrew tap — create github.com/rohirikman/homebrew-talon
+tap = "rohirikman/homebrew-talon"
+
+# Checksum algorithm
+checksum = "sha256"
+
+# Build targets
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+
+# Publish to GitHub Releases
+publish-jobs = ["./release-github"]
+
+# Do not publish to npm (Talon is a Rust binary, not a JS package)
+# npm-scope intentionally absent.
+
+# Shell installer settings
+[dist.install-path]
+# Install to ~/.cargo/bin by default; override with CARGO_HOME
+home = ".cargo"
+
+[dist.bin-aliases]
+# no aliases needed

@@ -1,0 +1,53 @@
+# cargo-deny configuration
+# Docs: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-gnu" },
+    { triple = "x86_64-apple-darwin" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "x86_64-pc-windows-msvc" },
+]
+
+# ── License policy ────────────────────────────────────────────────────────────
+[licenses]
+confidence-threshold = 0.8
+
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Zlib",
+    "Unicode-3.0",
+    # CDLA-Permissive-2.0: Linux Foundation permissive license used by webpki-roots (TLS roots)
+    "CDLA-Permissive-2.0",
+]
+
+exceptions = []
+
+# ── Banned crates ─────────────────────────────────────────────────────────────
+[bans]
+multiple-versions = "warn"
+
+# NOTE: async-trait is NOT listed here because axum v0.7 pulls it in transitively.
+# The rule "our crates must not use async-trait directly" is enforced via code review
+# and the explicit comment in CLAUDE.md + ADR 0003. We cannot ban transitive deps
+# without blocking axum itself.
+deny = []
+
+skip = []
+
+# ── Security advisories ───────────────────────────────────────────────────────
+[advisories]
+version = 2
+
+# Downgrade transitive unmaintained crates to warnings when we have no upgrade path.
+# We use "deny" for actual CVEs; "warn" for maintenance status of transitive deps.
+# "workspace" = only fail on unmaintained crates we own; ignore transitive deps like paste
+unmaintained = "workspace"
+
+ignore = []
