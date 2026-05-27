@@ -130,6 +130,31 @@ Two backends, configured explicitly in `~/.talon/config.toml [tools.terminal] ba
 - `native` always runs at `ApprovalLevel::Dangerous` — every command requires user approval
 - Every `native` tool result is prefixed `[NATIVE]` so the LLM and user always know
 
+### TUI Architecture
+
+**Pattern:** MVU (Model-View-Update, Elm-style). All async events → `mpsc` channels → single update loop. Render is pure: `View(Model) → Frame`. No `Mutex` on UI state.
+
+**Stack:** Ratatui (immediate mode) + Crossterm (backend). Reference: OpenCode (Go/Bubbletea) for UX parity.
+
+**Five components:** `ChatView` (streaming markdown) · `InputBar` (`tui-textarea`, history, autocomplete) · `ToolPanel` (collapsible, spinners, diff view) · `StatusBar` (model, tokens, session, `[NATIVE]` badge) · `SplitPane` (adaptive: `<80 cols` stacked, `≥120 cols` side-by-side)
+
+**Three render modes** (detected at startup, overridable by flag):
+- `TUI` — full ratatui (default for interactive terminals)
+- `Accessible` — line-by-line, no escapes (`--accessible` or `--no-tui`)
+- `Plain` — raw text, no colour (`NO_COLOR`, `$TERM=dumb`, piped stdin, CI)
+
+**Markdown:** `comrak` (parse AST) → `syntect` (highlight code blocks) → ratatui `Spans`. Streaming: parse per frame, dim `…` indicator on unclosed blocks.
+
+**Diff rendering:** `similar` crate — red/green unified diff in `ToolPanel` for every `EditFileTool` proposal. User sees the change before it's applied.
+
+**Images:** `ratatui-image` with auto-protocol detection: Kitty → iTerm2 → Sixel → halfblocks (any terminal). Disabled inside tmux/zellij.
+
+**Links:** OSC 8 clickable hyperlinks where terminal supports it.
+
+**Never:** build the TUI without the non-TUI fallback. `Plain` and `Accessible` modes are not optional.
+
+See `docs/10_TUI/` (docs 77–79) for full research.
+
 ### Browser Tool
 
 - Use `headless_chrome` crate (actively maintained CDP client), NOT `chromiumoxide` (has axum 0.7+ dep conflicts as of 2025)

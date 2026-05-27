@@ -242,12 +242,12 @@ docker build -t talon:0 .
 > do you lock the 7 types in Phase 1.
 
 ### Tasks
-- [ ] 0.5.1 Temporary `EchoTool` and `ReadFileTool` stub in `talon/src/main.rs` (not in crates yet)
-- [ ] 0.5.2 `AnthropicProvider` quick-and-dirty impl: `reqwest::post`, parse `content[0].text`
-- [ ] 0.5.3 Inline agent loop: LLM → if tool_use block → execute → feed result back → loop until stop
-- [ ] 0.5.4 Inline `ApprovalLevel` check: `Dangerous` tools print "approve? [y/n]" to stderr
+- [x] 0.5.1 Temporary `EchoTool` and `ReadFileTool` stub in `talon/src/main.rs` (not in crates yet)
+- [x] 0.5.2 `AnthropicProvider` quick-and-dirty impl: `reqwest::post`, parse `content[0].text`
+- [x] 0.5.3 Inline agent loop: LLM → if tool_use block → execute → feed result back → loop until stop
+- [x] 0.5.4 Inline `ApprovalLevel` check: `Dangerous` tools print "approve? [y/n]" to stderr
 - [ ] 0.5.5 Test: `cargo run -- --message "read ./Cargo.toml and tell me the edition"` — must work end-to-end
-- [ ] 0.5.6 Identify any type shape that felt wrong during implementation; record in `docs/ADR/0005-prototype-learnings.md`
+- [x] 0.5.6 Identify any type shape that felt wrong during implementation; record in `docs/ADR/0007-prototype-learnings.md`
 - [ ] 0.5.7 Once prototype passes the manual test, promote the 7 types to their final crate homes
 
 ### Exit Gate
@@ -411,27 +411,112 @@ docker images | grep talon-sandbox
 > **Edge:** Telegram + CLI + HTTP from one binary, unified session memory. Start in Telegram,
 > continue in CLI — same context. Build HTTP gateway first (testable without bot tokens), Telegram
 > second, Discord last (serenity has heavy deps; sequence to reduce integration risk).
+>
+> **TUI edge:** The first AI agent TUI in Rust with streaming markdown, syntax-highlighted diffs,
+> adaptive layout, and inline images. Study reference: OpenCode (Go/Bubbletea) for UX parity.
+> See `docs/10_TUI/` for full research (docs 77–79).
+
+### TUI Architecture
+
+**Pattern:** MVU (Model-View-Update, Elm-style) — same pattern as Bubbletea/OpenCode.
+All async events (LLM tokens, tool results, keyboard) flow through `mpsc` channels into a single
+update loop. No shared mutable state. Render is pure: `View(Model) → Frame`.
+
+```
+tokio runtime
+  ├── LLM stream     ─┐
+  ├── Tool executor  ─┼──mpsc──▶ MVU loop ──▶ Ratatui ──▶ Crossterm
+  └── Crossterm keys ─┘          │
+                                 └──▶ Model state (no Mutex needed)
+```
+
+**Five components** (see doc 78 for full spec):
+
+| Component | What it renders |
+|-----------|----------------|
+| `ChatView` | Streaming markdown — `comrak` AST → `syntect` highlights → ratatui Spans |
+| `InputBar` | Multi-line input (`tui-textarea`), history (↑↓), autocomplete |
+| `ToolPanel` | Collapsible side/bottom; active tool spinners; expandable output with syntax highlight |
+| `StatusBar` | Model name, token count, session id, sandbox mode (`[NATIVE]` badge if native) |
+| `SplitPane` | Adaptive: `<80 cols` → stacked compact; `≥120 cols` → ChatView + ToolPanel side-by-side |
+
+**Render modes** (detect at startup, `--gateway` flag overrides):
+
+| Mode | When | How |
+|------|------|-----|
+| `TUI` | Interactive terminal | Full ratatui with all components |
+| `Accessible` | `--accessible` or `--no-tui` | Line-by-line, no escape sequences, `indicatif` spinners |
+| `Plain` | `NO_COLOR`, `$TERM=dumb`, piped stdin | Raw text, no colour, works in CI |
+
+**Streaming markdown approach** (LLM tokens arrive one by one):
+1. Buffer incoming tokens into a `String`
+2. Parse with `comrak` on every render frame (~60fps)
+3. Detect unclosed blocks (code fence, list) — show with dim `…` indicator
+4. Re-parse when buffer grows; complete elements render normally
 
 ### Tasks
-- [ ] 4.1 `crates/talon-gateway/src/lib.rs` — `Gateway` trait + normalized `Message` struct
-- [ ] 4.2 `crates/talon-gateway/src/normalize.rs` — markdown normalization per platform
-- [ ] 4.3 `crates/talon-gateway/src/cli.rs` — `CliGateway`: stdin/stdout loop
+
+**Gateway foundation**
+- [ ] 4.1 `crates/talon-gateway/src/lib.rs` — `Gateway` trait + normalized `Message` struct + `RenderMode` enum
+- [ ] 4.2 `crates/talon-gateway/src/normalize.rs` — markdown normalization per platform (Telegram strips some syntax, TUI renders all)
+- [ ] 4.3 `crates/talon-gateway/src/cli.rs` — `CliGateway`: stdin/stdout loop, `indicatif` spinner while agent thinks
 - [ ] 4.4 `crates/talon-gateway/src/http.rs` — `HttpGateway` (axum): `POST /v1/messages`, SSE stream `GET /v1/stream/:session_id` — **build this first; no bot token required**
-- [ ] 4.5 `crates/talon-gateway/src/tui.rs` — `TuiGateway` (ratatui + crossterm): split pane, AgentEvent stream renders as status line
-- [ ] 4.6 `crates/talon-gateway/src/telegram.rs` — `TelegramGateway` (teloxide): polling + webhook modes
-- [ ] 4.7 `crates/talon-tools/src/send_message.rs` — `SendMessageTool` (NeedsApproval): agent pushes to any channel
-- [ ] 4.8 `crates/talon-gateway/src/registry.rs` — `GatewayRegistry`: `HashMap<ChannelId, Arc<dyn Gateway>>`
-- [ ] 4.9 Update `talon/src/main.rs`: `--gateway cli,telegram,http` flag; spawn each as `tokio::spawn`
-- [ ] 4.10 Integration tests: CLI roundtrip, HTTP POST roundtrip with mock LLM
-- [ ] 4.11 Manual test: Telegram bot responds within 5s end-to-end
+
+**TUI gateway**
+- [ ] 4.5 `crates/talon-gateway/src/tui/mod.rs` — `TuiGateway`: startup capability detection (`detect_capabilities()` → `RenderMode`), raw mode init, event loop spawn
+- [ ] 4.6 `crates/talon-gateway/src/tui/app.rs` — `App` struct (MVU model): `messages: Vec<Message>`, `input: TextArea`, `tool_calls: Vec<ActiveTool>`, `layout: LayoutMode`; `update(Msg) -> App` is pure
+- [ ] 4.7 `crates/talon-gateway/src/tui/components/chat.rs` — `ChatView`: streaming markdown renderer; `comrak` AST → ratatui `Text`; `syntect` for fenced code blocks; OSC 8 links; inline images via `ratatui-image` (auto-detects Kitty/iTerm2/Sixel/halfblocks)
+- [ ] 4.8 `crates/talon-gateway/src/tui/components/input.rs` — `InputBar`: `tui-textarea` for multi-line edit; Ctrl+Enter to submit; ↑↓ history; `/` command autocomplete
+- [ ] 4.9 `crates/talon-gateway/src/tui/components/tools.rs` — `ToolPanel`: collapsible (Tab to toggle); spinner per active tool; `similar`-powered diff view for `EditFileTool` proposals (red/green unified diff); expand/collapse individual calls
+- [ ] 4.10 `crates/talon-gateway/src/tui/components/status.rs` — `StatusBar`: model name, token usage, session id, `[NATIVE]` sandbox badge, multiplexer detection (tmux/zellij prefix hint)
+- [ ] 4.11 `crates/talon-gateway/src/tui/layout.rs` — `SplitPane` adaptive layout: `<80 cols` stacked, `≥120 cols` side-by-side; listens to terminal resize events
+- [ ] 4.12 `crates/talon-gateway/src/tui/render.rs` — `detect_capabilities()`: checks `NO_COLOR`, `$TERM`, `--accessible` flag, pipe detection; returns `RenderMode`
+
+**Remaining gateways**
+- [ ] 4.13 `crates/talon-gateway/src/telegram.rs` — `TelegramGateway` (teloxide): polling + webhook modes
+- [ ] 4.14 `crates/talon-tools/src/send_message.rs` — `SendMessageTool` (NeedsApproval): agent pushes to any channel
+- [ ] 4.15 `crates/talon-gateway/src/registry.rs` — `GatewayRegistry`: `HashMap<ChannelId, Arc<dyn Gateway>>`
+- [ ] 4.16 Update `talon/src/main.rs`: `--gateway cli,tui,telegram,http` flag; `--accessible` flag; spawn each as `tokio::spawn`
+- [ ] 4.17 Integration tests: CLI roundtrip, HTTP POST roundtrip with mock LLM, TUI render smoke test (headless)
+- [ ] 4.18 Manual test: Telegram bot responds within 5s end-to-end
+
+### New workspace dependencies (add in this phase)
+
+```toml
+tui-textarea    = "0.6"      # multi-line input widget
+ratatui-image   = "2"        # inline images (Kitty/Sixel/iTerm2/halfblocks)
+comrak          = "0.28"     # CommonMark/GFM parser → AST
+syntect         = "5"        # syntax highlighting (Sublime grammars)
+similar         = "2"        # diff algorithm for file change display
+indicatif       = "0.17"     # spinners/progress bars (non-TUI mode)
+inquire         = "0.7"      # interactive prompts (non-TUI mode)
+strip-ansi-escapes = "0.2"   # clean output for logging/accessibility
+unicode-width   = "0.1"      # correct layout with CJK/emoji
+```
 
 ### Exit Gate
 ```bash
 cargo nextest run -p talon-gateway
+# CLI mode
 cargo run --release -- --gateway cli
+# TUI mode — interactive
+cargo run --release -- --gateway tui
+# Accessible fallback
+cargo run --release -- --gateway tui --accessible
+# Piped (plain mode auto-detected)
+echo "hello" | cargo run --release -- --gateway cli
+# HTTP
 curl -X POST http://localhost:7777/v1/messages -d '{"content":"hi"}'   # 200 OK
-# Telegram: set TELEGRAM_BOT_TOKEN, send "hello" → response <5s
+# Telegram
+# Set TELEGRAM_BOT_TOKEN, send "hello" → response <5s
+# Diff rendering: propose an EditFile, verify red/green diff in ToolPanel
 ```
+
+### Risks
+- Streaming markdown flicker — mitigate with frame-rate cap (60fps) and incremental `comrak` parsing
+- `ratatui-image` protocol detection fails on unusual terminals — halfblocks fallback always works
+- `tui-textarea` unicode handling edge cases (CJK, emoji) — `unicode-width` crate handles layout
+- tmux/zellij wraps escape sequences — detect multiplexer and disable image rendering inside it
 
 ---
 

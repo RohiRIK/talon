@@ -95,9 +95,15 @@ Phase 7 (Advanced: Subagents, ACP, Evolution) ← v2
 |-------|-------|-----------|
 | **Phase 4** 🖥 | Gateway trait, CLI, HTTP (Axum), TUI (Ratatui), Telegram (teloxide) | All 4 gateways functional, unified session memory |
 
-> 🖥 **First interactive CLI — Week 5:** `cargo run --release -- --gateway cli` opens a persistent stdin/stdout chat loop. Type a message, get a response, keep going. Session memory is live — the agent remembers within the conversation.
+> 🖥 **First interactive CLI — Week 5:** `cargo run --release -- --gateway cli` opens a persistent stdin/stdout chat loop. Session memory is live — the agent remembers within the conversation. Works piped too: `echo "fix bug" | talon`.
 >
-> 🖥 **First TUI — Week 5–6:** `cargo run --release -- --gateway tui` opens a ratatui split-pane interface: input at the bottom, agent response stream at the top, AgentEvent status line (Thinking… / Calling tool… / Done). This is the first time Talon looks like an app.
+> 🖥 **First TUI — Week 5–6:** `cargo run --release -- --gateway tui` — MVU architecture (Elm-style, no shared mutable state), five components:
+> - **ChatView** — LLM response streams token-by-token, rendered as live markdown (headings, bold, code blocks with syntax highlighting, tables, clickable links)
+> - **ToolPanel** — collapsible side panel showing active tool executions with spinners; red/green diff view for every file edit proposal before it's applied
+> - **InputBar** — multi-line input, ↑↓ history, `/` command autocomplete
+> - **StatusBar** — model, token count, session id, `[NATIVE]` badge if running without Docker sandbox
+> - **Adaptive layout** — `<80 cols`: stacked compact; `≥120 cols`: ChatView + ToolPanel side-by-side
+> - **Accessibility** — `--accessible` flag or `NO_COLOR`/`$TERM=dumb` → plain line-by-line mode, no escapes
 >
 > 📱 **First Telegram — Week 6:** Set `TELEGRAM_BOT_TOKEN`, send "hello" from your phone → response in under 5 seconds.
 
