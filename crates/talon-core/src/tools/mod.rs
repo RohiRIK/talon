@@ -52,6 +52,7 @@ pub trait Tool: Send + Sync {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use std::sync::Arc;
 

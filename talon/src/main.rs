@@ -313,7 +313,7 @@ async fn run_agent(api_key: String, user_message: String) -> Result<()> {
             };
             let result = match tools.iter().find(|t| t.name() == name) {
                 Some(t) => {
-                    check_approval(t, &input)?;
+                    check_approval(t, input)?;
                     t.execute(input.clone()).await
                 }
                 None => ToolResult::err(format!("Unknown tool: {name}")),

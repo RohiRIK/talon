@@ -66,6 +66,7 @@ impl fmt::Debug for AgentEvent {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
