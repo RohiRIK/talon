@@ -248,7 +248,7 @@ docker build -t talon:0 .
 - [x] 0.5.4 Inline `ApprovalLevel` check: `Dangerous` tools print "approve? [y/n]" to stderr
 - [ ] 0.5.5 Test: `cargo run -- --message "read ./Cargo.toml and tell me the edition"` — must work end-to-end
 - [x] 0.5.6 Identify any type shape that felt wrong during implementation; record in `docs/ADR/0007-prototype-learnings.md`
-- [ ] 0.5.7 Once prototype passes the manual test, promote the 7 types to their final crate homes
+- [x] 0.5.7 Once prototype passes the manual test, promote the 7 types to their final crate homes
 
 ### Exit Gate
 ```bash

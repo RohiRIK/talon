@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::{self, Write as _};
 use std::path::PathBuf;
 use std::time::Duration;
+use talon_core::approval::ApprovalLevel;
+use talon_core::tools::ToolResult;
+use talon_llm::{AnthropicProvider, ContentBlock, LlmProvider, Message};
 
 // ── CLI definition ────────────────────────────────────────────────────────────
 
@@ -83,24 +84,7 @@ enum CacheAction {
     Stats,
 }
 
-// ── Phase 0.5: prototype types (inline — promoted to crates in task 0.5.7) ────
-// Enum dispatch for tools avoids the async-fn dyn-safety question in the prototype.
-// ADR 0007 will record what this reveals about the final Tool trait design.
-
-/// Tool approval level, computed per-invocation with actual arguments.
-// NeedsApproval and Dangerous exist so Phase 1 can fill them in; only Safe is
-// constructed by the two prototype tools.
-#[allow(dead_code)]
-enum ApprovalLevel {
-    Safe,
-    NeedsApproval,
-    Dangerous,
-}
-
-struct ToolResult {
-    content: String,
-    is_error: bool,
-}
+// ── Concrete tool impls (enum dispatch; moves to talon-tools in Phase 3) ──────
 
 enum BuiltinTool {
     Echo,
@@ -152,112 +136,19 @@ impl BuiltinTool {
         match self {
             Self::Echo => {
                 let msg = args["message"].as_str().unwrap_or("(no message)");
-                ToolResult {
-                    content: msg.to_string(),
-                    is_error: false,
-                }
+                ToolResult::ok(msg)
             }
             Self::ReadFile => {
                 let path = match args["path"].as_str() {
                     Some(p) if !p.is_empty() => p.to_string(),
-                    _ => {
-                        return ToolResult {
-                            content: "Missing required argument: path".to_string(),
-                            is_error: true,
-                        };
-                    }
+                    _ => return ToolResult::err("Missing required argument: path"),
                 };
                 match std::fs::read_to_string(&path) {
-                    Ok(content) => ToolResult {
-                        content,
-                        is_error: false,
-                    },
-                    Err(e) => ToolResult {
-                        content: format!("Failed to read {path}: {e}"),
-                        is_error: true,
-                    },
+                    Ok(content) => ToolResult::ok(content),
+                    Err(e) => ToolResult::err(format!("Failed to read {path}: {e}")),
                 }
             }
         }
-    }
-}
-
-// ── Anthropic API types ───────────────────────────────────────────────────────
-
-#[derive(Serialize, Clone)]
-struct Message {
-    role: String,
-    content: serde_json::Value,
-}
-
-#[derive(Deserialize)]
-struct AnthropicResponse {
-    content: Vec<ContentBlock>,
-    stop_reason: String,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum ContentBlock {
-    Text {
-        text: String,
-    },
-    ToolUse {
-        id: String,
-        name: String,
-        input: serde_json::Value,
-    },
-}
-
-struct AnthropicProvider {
-    client: Client,
-    api_key: String,
-    model: String,
-}
-
-impl AnthropicProvider {
-    fn new(api_key: String) -> Self {
-        let model = std::env::var("TALON_LLM_MODEL")
-            .unwrap_or_else(|_| "claude-haiku-4-5-20251001".to_string());
-        Self {
-            client: Client::new(),
-            api_key,
-            model,
-        }
-    }
-
-    async fn complete(
-        &self,
-        messages: &[Message],
-        tools: &[serde_json::Value],
-    ) -> Result<AnthropicResponse> {
-        let body = json!({
-            "model": self.model,
-            "max_tokens": 4096,
-            "messages": messages,
-            "tools": tools,
-        });
-
-        let resp = self
-            .client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .context("failed to send request to Anthropic API")?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("Anthropic API error {status}: {text}"));
-        }
-
-        resp.json::<AnthropicResponse>()
-            .await
-            .context("failed to parse Anthropic API response")
     }
 }
 
@@ -392,10 +283,7 @@ async fn run_agent(api_key: String, user_message: String) -> Result<()> {
     let tool_schemas: Vec<serde_json::Value> = tools.iter().map(|t| t.schema()).collect();
     let provider = AnthropicProvider::new(api_key);
 
-    let mut messages: Vec<Message> = vec![Message {
-        role: "user".to_string(),
-        content: serde_json::Value::String(user_message),
-    }];
+    let mut messages: Vec<Message> = vec![Message::user(user_message)];
 
     loop {
         let response = tokio::time::timeout(
@@ -407,10 +295,7 @@ async fn run_agent(api_key: String, user_message: String) -> Result<()> {
 
         let assistant_content = serde_json::to_value(&response.content)
             .context("failed to serialize assistant content")?;
-        messages.push(Message {
-            role: "assistant".to_string(),
-            content: assistant_content,
-        });
+        messages.push(Message::assistant(assistant_content));
 
         if response.stop_reason == "end_turn" {
             for block in &response.content {
@@ -428,13 +313,10 @@ async fn run_agent(api_key: String, user_message: String) -> Result<()> {
             };
             let result = match tools.iter().find(|t| t.name() == name) {
                 Some(t) => {
-                    check_approval(t, input)?;
+                    check_approval(t, &input)?;
                     t.execute(input.clone()).await
                 }
-                None => ToolResult {
-                    content: format!("Unknown tool: {name}"),
-                    is_error: true,
-                },
+                None => ToolResult::err(format!("Unknown tool: {name}")),
             };
             tracing::debug!(tool = %name, is_error = result.is_error, "tool executed");
             results.push(json!({
@@ -448,10 +330,7 @@ async fn run_agent(api_key: String, user_message: String) -> Result<()> {
         if results.is_empty() {
             break;
         }
-        messages.push(Message {
-            role: "user".to_string(),
-            content: serde_json::Value::Array(results),
-        });
+        messages.push(Message::user(serde_json::Value::Array(results)));
     }
 
     Ok(())
@@ -791,7 +670,6 @@ mod tests {
 
     #[tokio::test]
     async fn cmd_run_with_message_returns_ok_without_api_key() -> Result<()> {
-        // When the API key is present cmd_run would hit the network, so skip.
         // Full integration test: TALON_LLM_API_KEY=sk-... cargo run -- --message "hello"
         if std::env::var("TALON_LLM_API_KEY").is_ok() {
             return Ok(());
@@ -799,7 +677,7 @@ mod tests {
         cmd_run(Some("hello".to_string()), None, "cli".to_string()).await
     }
 
-    // ── Phase 0.5: prototype tools ────────────────────────────────────────────
+    // ── BuiltinTool ───────────────────────────────────────────────────────────
 
     #[test]
     fn echo_tool_name() {
@@ -894,92 +772,6 @@ mod tests {
         assert!(check_approval(&BuiltinTool::Echo, &json!({"message": "hi"})).is_ok());
         assert!(check_approval(&BuiltinTool::ReadFile, &json!({"path": "/tmp/x"})).is_ok());
     }
-
-    // ── ContentBlock serde ────────────────────────────────────────────────────
-    // These tests validate the `#[serde(tag = "type", rename_all = "snake_case")]`
-    // annotation produces the exact JSON shape the Anthropic API expects.
-
-    #[test]
-    fn content_block_text_serializes_correctly() -> Result<()> {
-        let block = ContentBlock::Text {
-            text: "hello".to_string(),
-        };
-        let val = serde_json::to_value(&block)?;
-        assert_eq!(val["type"], "text");
-        assert_eq!(val["text"], "hello");
-        Ok(())
-    }
-
-    #[test]
-    fn content_block_tool_use_serializes_with_snake_case_type() -> Result<()> {
-        let block = ContentBlock::ToolUse {
-            id: "toolu_01".to_string(),
-            name: "read_file".to_string(),
-            input: json!({ "path": "./Cargo.toml" }),
-        };
-        let val = serde_json::to_value(&block)?;
-        assert_eq!(
-            val["type"], "tool_use",
-            "Anthropic API requires snake_case type tag"
-        );
-        assert_eq!(val["id"], "toolu_01");
-        assert_eq!(val["name"], "read_file");
-        assert_eq!(val["input"]["path"], "./Cargo.toml");
-        Ok(())
-    }
-
-    #[test]
-    fn content_block_text_deserializes() -> Result<()> {
-        let raw = r#"{"type":"text","text":"edition 2024"}"#;
-        let block: ContentBlock = serde_json::from_str(raw)?;
-        assert!(matches!(block, ContentBlock::Text { ref text } if text == "edition 2024"));
-        Ok(())
-    }
-
-    #[test]
-    fn content_block_tool_use_deserializes() -> Result<()> {
-        let raw = r#"{"type":"tool_use","id":"t1","name":"echo","input":{"message":"hi"}}"#;
-        let block: ContentBlock = serde_json::from_str(raw)?;
-        match block {
-            ContentBlock::ToolUse { id, name, input } => {
-                assert_eq!(id, "t1");
-                assert_eq!(name, "echo");
-                assert_eq!(input["message"], "hi");
-            }
-            ContentBlock::Text { .. } => panic!("expected ToolUse"),
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn content_block_round_trips() -> Result<()> {
-        let original = ContentBlock::ToolUse {
-            id: "t2".to_string(),
-            name: "read_file".to_string(),
-            input: json!({ "path": "/tmp/x" }),
-        };
-        let serialized = serde_json::to_string(&original)?;
-        let deserialized: ContentBlock = serde_json::from_str(&serialized)?;
-        let re_serialized = serde_json::to_string(&deserialized)?;
-        assert_eq!(serialized, re_serialized);
-        Ok(())
-    }
-
-    // ── AnthropicProvider ─────────────────────────────────────────────────────
-
-    #[test]
-    fn provider_uses_default_model_when_env_absent() {
-        // Remove env var if set so the test is deterministic.
-        // nextest isolates each test in its own process, so this is safe.
-        let prior = std::env::var("TALON_LLM_MODEL").ok();
-        if prior.is_some() {
-            return; // skip — can't easily unset without unsafe in this process
-        }
-        let p = AnthropicProvider::new("key".to_string());
-        assert_eq!(p.model, "claude-haiku-4-5-20251001");
-    }
-
-    // ── Tool approval levels ──────────────────────────────────────────────────
 
     #[test]
     fn all_prototype_tools_are_safe() {

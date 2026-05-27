@@ -5855,13 +5855,11 @@ checksum = "20f34339676cdcab560c9a82300c4c2581f68b9369aedf0fae86f2ff9565ff3e"
 
 [[package]]
 name = "talon"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
  "keyring",
- "reqwest 0.12.28",
- "serde",
  "serde_json",
  "talon-core",
  "talon-gateway",
@@ -5877,7 +5875,7 @@ dependencies = [
 
 [[package]]
 name = "talon-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "futures",
@@ -5891,7 +5889,7 @@ dependencies = [
 
 [[package]]
 name = "talon-gateway"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "crossterm",
@@ -5908,7 +5906,7 @@ dependencies = [
 
 [[package]]
 name = "talon-llm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -5920,7 +5918,7 @@ dependencies = [
 
 [[package]]
 name = "talon-memory"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "chrono",
@@ -5939,7 +5937,7 @@ dependencies = [
 
 [[package]]
 name = "talon-plugins"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -5952,7 +5950,7 @@ dependencies = [
 
 [[package]]
 name = "talon-tools"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
