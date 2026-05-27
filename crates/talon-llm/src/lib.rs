@@ -4,6 +4,14 @@ pub use anthropic::AnthropicProvider;
 mod openai;
 pub use openai::OpenAIProvider;
 
+#[cfg(any(test, feature = "github-copilot-provider"))]
+pub(crate) mod openai_compat;
+
+#[cfg(feature = "github-copilot-provider")]
+mod github_copilot;
+#[cfg(feature = "github-copilot-provider")]
+pub use github_copilot::GitHubCopilotProvider;
+
 #[cfg(any(test, feature = "mock"))]
 pub mod mock;
 #[cfg(any(test, feature = "mock"))]
