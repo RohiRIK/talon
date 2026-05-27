@@ -190,4 +190,42 @@ mod tests {
             ApprovalLevel::Dangerous
         ));
     }
+
+    /// Per-invocation approval varies by args — the tool inspects arguments, not just its own identity.
+    /// This is the key invariant: tools cannot lie about danger level; it's computed per call.
+    #[test]
+    fn tool_approval_level_varies_by_args() {
+        struct SmartTool;
+        impl Tool for SmartTool {
+            fn name(&self) -> &str { "smart" }
+            fn schema(&self) -> Value { serde_json::json!({}) }
+            fn approval_level(&self, args: &Value) -> ApprovalLevel {
+                if args.get("destructive").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    ApprovalLevel::Dangerous
+                } else {
+                    ApprovalLevel::Safe
+                }
+            }
+            fn execute(
+                &self,
+                _args: Value,
+                _ctx: ToolContext,
+            ) -> Pin<Box<dyn Future<Output = ToolResult> + Send + '_>> {
+                Box::pin(async { ToolResult::ok("done") })
+            }
+        }
+
+        assert_eq!(
+            SmartTool.approval_level(&serde_json::json!({"destructive": false})),
+            ApprovalLevel::Safe
+        );
+        assert_eq!(
+            SmartTool.approval_level(&serde_json::json!({"destructive": true})),
+            ApprovalLevel::Dangerous
+        );
+        assert_eq!(
+            SmartTool.approval_level(&Value::Null),
+            ApprovalLevel::Safe
+        );
+    }
 }

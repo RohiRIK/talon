@@ -1,6 +1,9 @@
 mod anthropic;
 pub use anthropic::AnthropicProvider;
 
+mod openai;
+pub use openai::OpenAIProvider;
+
 #[cfg(any(test, feature = "mock"))]
 pub mod mock;
 #[cfg(any(test, feature = "mock"))]

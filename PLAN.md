@@ -280,7 +280,7 @@ TALON_LLM_API_KEY=sk-... cargo run -- --message "read ./Cargo.toml, tell me what
 - [x] 1.5 **[TYPE #5]** `crates/talon-core/src/tools/dispatcher.rs` — `ToolDispatcher`: `HashMap<String, Arc<dyn Tool>>`, `register`, `dispatch_sequential` (default), `dispatch_parallel` (opt-in, JoinSet + Semaphore)
 - [x] 1.6 `crates/talon-llm/src/error.rs` — `LlmError` (thiserror): `RateLimited`, `InvalidResponse`, `Network`, `AuthFailed`, `ContextTooLong`
 - [x] 1.7 **[TYPE #4]** `crates/talon-llm/src/lib.rs` — `LlmProvider` trait + `Message`, `LlmResponse`, `ToolCall` types
-- [ ] 1.8 `crates/talon-llm/src/openai.rs` — `OpenAIProvider` impl, `reqwest` + `tokio::time::timeout(60s, ...)`
+- [x] 1.8 `crates/talon-llm/src/openai.rs` — `OpenAIProvider` impl, `reqwest` + `tokio::time::timeout(60s, ...)`
 - [x] 1.9 `crates/talon-llm/src/anthropic.rs` — `AnthropicProvider` impl
 - [x] 1.10 `crates/talon-core/src/state.rs` — `AgentState` machine: `Idle → Thinking → CallingTool → AwaitingApproval → Completed | Failed`
 - [x] 1.11 `crates/talon-core/src/agent.rs` — `Agent::run(message)`: LLM → parse tool calls → approval → dispatch (sequential) → loop
@@ -289,7 +289,7 @@ TALON_LLM_API_KEY=sk-... cargo run -- --message "read ./Cargo.toml, tell me what
 - [x] 1.14 Wire minimal persistence into `Agent` — save every message to `messages` table via `pool.get().await?.interact(|conn| ...)` pattern
 - [x] 1.15 Wire into `talon/src/main.rs`: build Agent → subscribe AgentEvent → print to stdout
 - [x] 1.16 `crates/talon-llm/src/mock.rs` — mock LlmProvider for deterministic tests (`#[cfg(any(test, feature="mock"))]`)
-- [ ] 1.17 Unit tests: approval membrane denies Dangerous, dispatcher routes, state machine transitions, per-invocation approval varies by args
+- [x] 1.17 Unit tests: approval membrane denies Dangerous, dispatcher routes, state machine transitions, per-invocation approval varies by args
 
 ### Exit Gate
 ```bash
