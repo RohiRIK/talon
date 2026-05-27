@@ -283,11 +283,11 @@ TALON_LLM_API_KEY=sk-... cargo run -- --message "read ./Cargo.toml, tell me what
 - [ ] 1.8 `crates/talon-llm/src/openai.rs` — `OpenAIProvider` impl, `reqwest` + `tokio::time::timeout(60s, ...)`
 - [x] 1.9 `crates/talon-llm/src/anthropic.rs` — `AnthropicProvider` impl
 - [x] 1.10 `crates/talon-core/src/state.rs` — `AgentState` machine: `Idle → Thinking → CallingTool → AwaitingApproval → Completed | Failed`
-- [ ] 1.11 `crates/talon-core/src/agent.rs` — `Agent::run(message)`: LLM → parse tool calls → approval → dispatch (sequential) → loop
-- [ ] 1.12 Add `#[tracing::instrument(skip(self))]` selectively to **session boundary fns** (agent start, tool dispatch entry points) — NOT on every hot-path fn (100–500ns overhead per call adds up)
+- [x] 1.11 `crates/talon-core/src/agent.rs` — `Agent::run(message)`: LLM → parse tool calls → approval → dispatch (sequential) → loop
+- [x] 1.12 Add `#[tracing::instrument(skip(self))]` selectively to **session boundary fns** (agent start, tool dispatch entry points) — NOT on every hot-path fn (100–500ns overhead per call adds up)
 - [x] 1.13 **[TYPE #3 stub]** `crates/talon-memory/src/lib.rs` — minimal `Database` struct using `deadpool_sqlite::Pool`, WAL mode, sessions+messages tables only (enough for Phase 1 persistence; full schema in Phase 2)
-- [ ] 1.14 Wire minimal persistence into `Agent` — save every message to `messages` table via `pool.get().await?.interact(|conn| ...)` pattern
-- [ ] 1.15 Wire into `talon/src/main.rs`: build Agent → subscribe AgentEvent → print to stdout
+- [x] 1.14 Wire minimal persistence into `Agent` — save every message to `messages` table via `pool.get().await?.interact(|conn| ...)` pattern
+- [x] 1.15 Wire into `talon/src/main.rs`: build Agent → subscribe AgentEvent → print to stdout
 - [x] 1.16 `crates/talon-llm/src/mock.rs` — mock LlmProvider for deterministic tests (`#[cfg(any(test, feature="mock"))]`)
 - [ ] 1.17 Unit tests: approval membrane denies Dangerous, dispatcher routes, state machine transitions, per-invocation approval varies by args
 

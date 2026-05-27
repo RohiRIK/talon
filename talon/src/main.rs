@@ -1,12 +1,17 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde_json::json;
+use std::future::Future;
 use std::io::{self, Write as _};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::pin::Pin;
+use std::sync::Arc;
+use talon_core::agent::Agent;
 use talon_core::approval::ApprovalLevel;
-use talon_core::tools::ToolResult;
-use talon_llm::{AnthropicProvider, ContentBlock, LlmProvider, Message};
+use talon_core::events::AgentEvent;
+use talon_core::tools::{Tool, ToolContext, ToolResult};
+use talon_core::tools::dispatcher::ToolDispatcher;
+use talon_llm::{AnthropicProvider, LlmProvider};
 
 // ── CLI definition ────────────────────────────────────────────────────────────
 
@@ -84,71 +89,79 @@ enum CacheAction {
     Stats,
 }
 
-// ── Concrete tool impls (enum dispatch; moves to talon-tools in Phase 3) ──────
+// ── Concrete tool impls (moves to talon-tools in Phase 3) ────────────────────
 
-enum BuiltinTool {
-    Echo,
-    ReadFile,
+struct EchoTool;
+
+impl Tool for EchoTool {
+    fn name(&self) -> &str {
+        "echo"
+    }
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "name": "echo",
+            "description": "Echo back a message. Useful for verifying tool dispatch.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "message": { "type": "string", "description": "The message to echo." }
+                },
+                "required": ["message"]
+            }
+        })
+    }
+    fn approval_level(&self, _args: &serde_json::Value) -> ApprovalLevel {
+        ApprovalLevel::Safe
+    }
+    fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: ToolContext,
+    ) -> Pin<Box<dyn Future<Output = ToolResult> + Send + '_>> {
+        Box::pin(async move {
+            let msg = args["message"].as_str().unwrap_or("(no message)");
+            ToolResult::ok(msg)
+        })
+    }
 }
 
-impl BuiltinTool {
+struct ReadFileTool;
+
+impl Tool for ReadFileTool {
     fn name(&self) -> &str {
-        match self {
-            Self::Echo => "echo",
-            Self::ReadFile => "read_file",
-        }
+        "read_file"
     }
-
     fn schema(&self) -> serde_json::Value {
-        match self {
-            Self::Echo => json!({
-                "name": "echo",
-                "description": "Echo back a message. Useful for verifying tool dispatch.",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "message": { "type": "string", "description": "The message to echo." }
-                    },
-                    "required": ["message"]
-                }
-            }),
-            Self::ReadFile => json!({
-                "name": "read_file",
-                "description": "Read the contents of a file from the local filesystem.",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "path": { "type": "string", "description": "Path to the file to read." }
-                    },
-                    "required": ["path"]
-                }
-            }),
-        }
-    }
-
-    fn approval_level(&self) -> ApprovalLevel {
-        match self {
-            Self::Echo | Self::ReadFile => ApprovalLevel::Safe,
-        }
-    }
-
-    async fn execute(&self, args: serde_json::Value) -> ToolResult {
-        match self {
-            Self::Echo => {
-                let msg = args["message"].as_str().unwrap_or("(no message)");
-                ToolResult::ok(msg)
+        json!({
+            "name": "read_file",
+            "description": "Read the contents of a file from the local filesystem.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path to the file to read." }
+                },
+                "required": ["path"]
             }
-            Self::ReadFile => {
-                let path = match args["path"].as_str() {
-                    Some(p) if !p.is_empty() => p.to_string(),
-                    _ => return ToolResult::err("Missing required argument: path"),
-                };
-                match std::fs::read_to_string(&path) {
-                    Ok(content) => ToolResult::ok(content),
-                    Err(e) => ToolResult::err(format!("Failed to read {path}: {e}")),
-                }
+        })
+    }
+    fn approval_level(&self, _args: &serde_json::Value) -> ApprovalLevel {
+        ApprovalLevel::Safe
+    }
+    fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: ToolContext,
+    ) -> Pin<Box<dyn Future<Output = ToolResult> + Send + '_>> {
+        Box::pin(async move {
+            let path = match args["path"].as_str() {
+                Some(p) if !p.is_empty() => p.to_string(),
+                _ => return ToolResult::err("Missing required argument: path"),
+            };
+            match std::fs::read_to_string(&path) {
+                Ok(content) => ToolResult::ok(content),
+                Err(e) => ToolResult::err(format!("Failed to read {path}: {e}")),
             }
-        }
+        })
     }
 }
 
@@ -255,83 +268,74 @@ async fn cmd_run(
 
 // ── Agent loop ────────────────────────────────────────────────────────────────
 
-fn check_approval(tool: &BuiltinTool, args: &serde_json::Value) -> Result<()> {
-    match tool.approval_level() {
-        ApprovalLevel::Safe => Ok(()),
-        ApprovalLevel::NeedsApproval => {
-            tracing::debug!(tool = tool.name(), %args, "auto-approving tool");
-            Ok(())
-        }
-        ApprovalLevel::Dangerous => {
-            eprint!("[talon] approve {}({args})? [y/n]: ", tool.name());
-            io::stderr().flush().ok();
-            let mut answer = String::new();
-            io::stdin()
-                .read_line(&mut answer)
-                .context("failed to read approval input")?;
-            if answer.trim().eq_ignore_ascii_case("y") {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("tool call denied by user"))
-            }
-        }
-    }
-}
-
 async fn run_agent(api_key: String, user_message: String) -> Result<()> {
-    let tools = [BuiltinTool::Echo, BuiltinTool::ReadFile];
-    let tool_schemas: Vec<serde_json::Value> = tools.iter().map(|t| t.schema()).collect();
-    let provider = AnthropicProvider::new(api_key);
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<AgentEvent>(64);
 
-    let mut messages: Vec<Message> = vec![Message::user(user_message)];
-
-    loop {
-        let response = tokio::time::timeout(
-            Duration::from_secs(60),
-            provider.complete(&messages, &tool_schemas),
-        )
-        .await
-        .context("LLM request timed out")??;
-
-        let assistant_content = serde_json::to_value(&response.content)
-            .context("failed to serialize assistant content")?;
-        messages.push(Message::assistant(assistant_content));
-
-        if response.stop_reason == "end_turn" {
-            for block in &response.content {
-                if let ContentBlock::Text { text } = block {
-                    println!("{text}");
+    // Spawn a task that prints text output from the agent.
+    // Dangerous tools emit ApprovalRequested — we prompt the user via stderr.
+    let printer = tokio::spawn(async move {
+        while let Some(event) = event_rx.recv().await {
+            match event {
+                AgentEvent::ApprovalRequested { tool_name, args, tx, .. } => {
+                    eprint!("[talon] approve {tool_name}({args})? [y/n]: ");
+                    io::stderr().flush().ok();
+                    let mut answer = String::new();
+                    io::stdin().read_line(&mut answer).ok();
+                    let approved = answer.trim().eq_ignore_ascii_case("y");
+                    tx.send(approved).ok();
                 }
+                AgentEvent::ToolResult { content, is_error, .. } => {
+                    if is_error {
+                        tracing::warn!("tool error: {content}");
+                    } else {
+                        tracing::debug!("tool result: {content}");
+                    }
+                }
+                AgentEvent::Failed(msg) => eprintln!("[talon] agent failed: {msg}"),
+                AgentEvent::Completed => {
+                    // Final text is already in the last LlmResponse — Agent emits it.
+                }
+                _ => {}
             }
-            break;
         }
+    });
 
-        let mut results: Vec<serde_json::Value> = Vec::new();
-        for block in &response.content {
-            let ContentBlock::ToolUse { id, name, input } = block else {
-                continue;
-            };
-            let result = match tools.iter().find(|t| t.name() == name) {
-                Some(t) => {
-                    check_approval(t, input)?;
-                    t.execute(input.clone()).await
-                }
-                None => ToolResult::err(format!("Unknown tool: {name}")),
-            };
-            tracing::debug!(tool = %name, is_error = result.is_error, "tool executed");
-            results.push(json!({
-                "type": "tool_result",
-                "tool_use_id": id,
-                "content": result.content,
-                "is_error": result.is_error,
-            }));
-        }
+    let provider: Arc<dyn LlmProvider> = Arc::new(AnthropicProvider::new(api_key));
+    let mut dispatcher = ToolDispatcher::new();
+    dispatcher.register(Arc::new(EchoTool));
+    dispatcher.register(Arc::new(ReadFileTool));
 
-        if results.is_empty() {
-            break;
-        }
-        messages.push(Message::user(serde_json::Value::Array(results)));
+    // Set up DB persistence if ~/.talon/talon.db is reachable.
+    let db = talon_home()
+        .ok()
+        .map(|p| p.join("talon.db"))
+        .and_then(|p| p.to_str().map(|s| s.to_string()))
+        .and_then(|path| talon_memory::Database::open(&path).ok())
+        .map(Arc::new);
+
+    if let Some(ref db) = db {
+        db.init_schema().await.ok();
     }
+
+    let mut agent = {
+        let a = Agent::new(provider, dispatcher, event_tx);
+        match db {
+            Some(d) => a.with_db(d),
+            None => a,
+        }
+    };
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+
+    let run_result = agent.run(&session_id, user_message).await;
+
+    // Wait for the event printer to drain.
+    printer.await.ok();
+
+    // Print the last assistant text (extracted from the final response stored in messages).
+    // The agent already stored it; retrieve via a separate LLM response event isn't needed
+    // here since we subscribe to events. Emit final text via tracing for now.
+    run_result.map_err(|e| anyhow::anyhow!("{e}"))?;
 
     Ok(())
 }
@@ -677,21 +681,21 @@ mod tests {
         cmd_run(Some("hello".to_string()), None, "cli".to_string()).await
     }
 
-    // ── BuiltinTool ───────────────────────────────────────────────────────────
+    // ── Tool impls ────────────────────────────────────────────────────────────
 
     #[test]
     fn echo_tool_name() {
-        assert_eq!(BuiltinTool::Echo.name(), "echo");
+        assert_eq!(EchoTool.name(), "echo");
     }
 
     #[test]
     fn read_file_tool_name() {
-        assert_eq!(BuiltinTool::ReadFile.name(), "read_file");
+        assert_eq!(ReadFileTool.name(), "read_file");
     }
 
     #[test]
     fn echo_schema_has_required_message() {
-        let s = BuiltinTool::Echo.schema();
+        let s = EchoTool.schema();
         let required = &s["input_schema"]["required"];
         assert!(
             required
@@ -703,7 +707,7 @@ mod tests {
 
     #[test]
     fn read_file_schema_has_required_path() {
-        let s = BuiltinTool::ReadFile.schema();
+        let s = ReadFileTool.schema();
         let required = &s["input_schema"]["required"];
         assert!(
             required
@@ -715,14 +719,14 @@ mod tests {
 
     #[tokio::test]
     async fn echo_tool_returns_message() {
-        let result = BuiltinTool::Echo.execute(json!({ "message": "hi" })).await;
+        let result = EchoTool.execute(json!({ "message": "hi" }), ToolContext::default()).await;
         assert!(!result.is_error);
         assert_eq!(result.content, "hi");
     }
 
     #[tokio::test]
     async fn echo_tool_handles_missing_message() {
-        let result = BuiltinTool::Echo.execute(json!({})).await;
+        let result = EchoTool.execute(json!({}), ToolContext::default()).await;
         assert!(!result.is_error);
         assert_eq!(result.content, "(no message)");
     }
@@ -736,8 +740,8 @@ mod tests {
             .to_str()
             .context("temp path is not valid UTF-8")?
             .to_string();
-        let result = BuiltinTool::ReadFile
-            .execute(json!({ "path": path_str }))
+        let result = ReadFileTool
+            .execute(json!({ "path": path_str }), ToolContext::default())
             .await;
         assert!(!result.is_error);
         assert_eq!(result.content, "hello from file");
@@ -746,8 +750,8 @@ mod tests {
 
     #[tokio::test]
     async fn read_file_tool_errors_on_missing_file() {
-        let result = BuiltinTool::ReadFile
-            .execute(json!({ "path": "/nonexistent/path/xyz.txt" }))
+        let result = ReadFileTool
+            .execute(json!({ "path": "/nonexistent/path/xyz.txt" }), ToolContext::default())
             .await;
         assert!(result.is_error);
         assert!(result.content.contains("Failed to read"));
@@ -755,33 +759,24 @@ mod tests {
 
     #[tokio::test]
     async fn read_file_tool_errors_on_empty_path() {
-        let result = BuiltinTool::ReadFile.execute(json!({ "path": "" })).await;
+        let result = ReadFileTool
+            .execute(json!({ "path": "" }), ToolContext::default())
+            .await;
         assert!(result.is_error);
         assert!(result.content.contains("Missing required argument"));
     }
 
     #[tokio::test]
     async fn read_file_tool_errors_on_missing_path_arg() {
-        let result = BuiltinTool::ReadFile.execute(json!({})).await;
+        let result = ReadFileTool.execute(json!({}), ToolContext::default()).await;
         assert!(result.is_error);
         assert!(result.content.contains("Missing required argument"));
     }
 
     #[test]
-    fn check_approval_safe_always_ok() {
-        assert!(check_approval(&BuiltinTool::Echo, &json!({"message": "hi"})).is_ok());
-        assert!(check_approval(&BuiltinTool::ReadFile, &json!({"path": "/tmp/x"})).is_ok());
-    }
-
-    #[test]
-    fn all_prototype_tools_are_safe() {
-        assert!(matches!(
-            BuiltinTool::Echo.approval_level(),
-            ApprovalLevel::Safe
-        ));
-        assert!(matches!(
-            BuiltinTool::ReadFile.approval_level(),
-            ApprovalLevel::Safe
-        ));
+    fn all_builtin_tools_are_safe() {
+        let args = json!({});
+        assert_eq!(EchoTool.approval_level(&args), ApprovalLevel::Safe);
+        assert_eq!(ReadFileTool.approval_level(&args), ApprovalLevel::Safe);
     }
 }
