@@ -104,29 +104,28 @@ let results = table
 
 ## Integration Path for Talon
 
-### Option A: LanceDB as Primary (replaces SQLite)
+### Decision: LanceDB as Primary Storage from Day One
+
+No feature flag, no SQLite-memory fallback. LanceDB is the **sole memory backend** for talon-ltm.
+
+Rationale:
+- LanceDB is SQLite underneath — you get everything SQLite+FTS5 offers, plus vectors
+- Building a SQLite+FTS5 backend just to replace it later is throwaway work
+- Hybrid search (FTS + vectors) is available from the start
+- One backend, one code path, simpler maintenance
+
 ```
 talon-memory/
-├── backend.rs          # MemoryBackend trait
+├── backend.rs          # MemoryBackend trait (LanceDB impl only)
 ├── lance_store.rs      # LanceDB implementation
 │   ├── memories table  # content + embeddings + metadata
-│   ├── relations table # memory graph edges
+│   ├── relations table # memory graph edges (optional, add later)
 │   └── context table   # project context items
 ├── working.rs          # conversation buffer (in-memory)
 └── promotion.rs        # working → long-term promotion
 ```
 
-### Option B: LanceDB alongside SQLite (hybrid)
-- SQLite for structured data (config, projects, sessions)
-- LanceDB for memory storage (vectors + FTS + metadata)
-- Best of both worlds, two dependencies
-
-### Option C: Feature-flagged
-```toml
-[features]
-default = ["sqlite-memory"]    # SQLite + FTS5 (minimal deps)
-lance-memory = ["lancedb"]     # LanceDB (vector + FTS unified)
-```
+SQLite remains for **non-memory concerns**: sessions, config, Honker queues/notifications/scheduler. LanceDB owns the memory store.
 
 ---
 
@@ -141,4 +140,4 @@ lance-memory = ["lancedb"]     # LanceDB (vector + FTS unified)
 
 ## Verdict
 
-★★★★☆ — **Strongest storage candidate.** The embedded + vector + FTS combination is exactly what Talon needs. The pre-1.0 status and dependency weight are the only concerns. Recommend **Option C** (feature-flagged) so users can choose SQLite for minimal builds or LanceDB for full semantic search.
+★★★★★ — **Primary storage engine for Talon.** LanceDB is the sole memory backend from day one — no feature flag, no SQLite fallback for memories. It gives Talon everything SQLite+FTS5 does (it's SQLite underneath) plus native vectors and hybrid search. Pre-1.0 status is acceptable for a pre-v1.0 project. SQLite remains for non-memory concerns (sessions, config, Honker).

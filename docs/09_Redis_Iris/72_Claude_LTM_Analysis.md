@@ -91,8 +91,8 @@ This is the most complete agent memory model of all candidates:
 2. **Auto-extraction pattern** — session-end hook that extracts learnings
 3. **Context injection** — session-start hook that pre-loads relevant memories
 4. **Decay as a feature** — time-based relevance with importance override
-5. **Memory graph** — typed relations between memories for reasoning
-6. **FTS5-first, vector-fallback** search strategy
+5. **Memory graph** — typed relations between memories for reasoning (optional, add later if needed)
+6. **FTS-first, vector-fallback** search strategy (using LanceDB for both, not SQLite FTS5)
 
 ---
 
@@ -107,7 +107,7 @@ This is the most complete agent memory model of all candidates:
 
 ## Integration Path for Talon
 
-**Pattern adoption, not code adoption.** claude-ltm is the **design reference** — Talon implements the same memory model in Rust with a different storage backend.
+**Pattern adoption, not code adoption.** claude-ltm is the **design reference** — Talon implements the same memory model in Rust (`talon-ltm`) with **LanceDB as the storage backend from day one** (not SQLite+FTS5). LanceDB provides everything SQLite+FTS5 does (it's SQLite underneath) plus native vector search and hybrid queries. No feature flag needed — one backend, one path.
 
 ```rust
 // The memory model claude-ltm proves works:

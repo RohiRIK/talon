@@ -139,31 +139,21 @@ No polling. No message broker. Just SQLite commits triggering cross-process wake
 
 ## Integration Strategy for Talon
 
-### Option A: Direct Dependency (Recommended)
+### Direct Dependency (Recommended)
 
-Add `honker-core` as a Cargo dependency behind a feature flag:
+Add `honker-core` as a Cargo dependency:
 
 ```toml
 [dependencies]
-honker-core = { version = "0.x", optional = true }
-
-[features]
-default = ["sqlite-memory"]
-reactive-memory = ["honker-core"]  # enables notify + queues + scheduler
+honker-core = "0.x"
 ```
 
-### Option B: Loadable Extension
+Honker operates on the **SQLite coordination DB** — separate from LanceDB which stores memories. The split:
 
-Load `honker` as a SQLite extension at runtime. Less tight integration but zero compile-time dependency:
+- **LanceDB** — memory storage (vectors + FTS + metadata)
+- **SQLite + Honker** — coordination (queues, notifications, scheduler, sessions, config)
 
-```rust
-conn.load_extension("honker")?;
-conn.execute("SELECT honker_notify('channel', ?)", [payload])?;
-```
-
-### Recommendation
-
-**Option A** for Talon — `honker-core` is a Rust crate, integrates naturally into the workspace. Feature-flagged so the minimal build stays lean.
+Both are embedded, no servers. Honker's `PRAGMA data_version` watcher reacts to commits on the coordination DB, triggering memory maintenance jobs that read/write LanceDB.
 
 ---
 
