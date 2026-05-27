@@ -1,4 +1,3 @@
-// Phase 0 placeholder — built-in tools (ReadFile, WriteFile, EditFile, etc.) defined in Phase 3.
+pub mod session_search;
 
-/// Placeholder so the workspace compiles in Phase 0.
-pub fn placeholder() {}
+pub use session_search::SessionSearchTool;

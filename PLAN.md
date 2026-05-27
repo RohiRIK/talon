@@ -312,17 +312,17 @@ sqlite3 ~/.talon/talon.db 'SELECT content FROM messages ORDER BY id DESC LIMIT 1
 > Cross-project session search with a SQL query.
 
 ### Tasks
-- [ ] 2.1 `crates/talon-memory/src/error.rs` — `MemoryError` (thiserror)
-- [ ] 2.2 `crates/talon-memory/src/schema.sql` — expand schema: `sessions`, `messages`, `tool_calls`, `skills`, `user_facts` + FTS5 virtual table `messages_fts`
-- [ ] 2.3 `crates/talon-memory/src/migrations.rs` — embedded migrations via `include_str!`, versioned, run on startup
-- [ ] 2.4 **[TYPE #3 final]** Expand `Database` with full `deadpool_sqlite::Pool` API; all DB operations use `.interact(|conn| { ... }).await?` pattern — no `Connection` ever crosses an await point
-- [ ] 2.5 `crates/talon-memory/src/store.rs` — `MemoryStore` trait: `save_message`, `search_messages(query, limit)`, `recent_messages(session_id, n)`
-- [ ] 2.6 `crates/talon-memory/src/sqlite_store.rs` — impl using FTS5 `MATCH` + `rank`
-- [ ] 2.7 `crates/talon-memory/src/context.rs` — `ContextBuilder`: system prompt + USER.md + MEMORY.md + recent N messages + FTS5 retrievals, token budget (hard cap 70% context window)
-- [ ] 2.8 `crates/talon-memory/src/files.rs` — `UserMd` / `MemoryMd` loaders from `~/.talon/`
-- [ ] 2.9 `crates/talon-tools/src/session_search.rs` — `SessionSearchTool` impl (ApprovalLevel::Safe)
-- [ ] 2.10 Integration tests: 100+ messages, FTS5 search <50ms, context stays under budget
-- [ ] 2.11 Add `talon db vacuum` + `talon db stats` CLI subcommands
+- [x] 2.1 `crates/talon-memory/src/error.rs` — `MemoryError` (thiserror)
+- [x] 2.2 `crates/talon-memory/src/schema.sql` — expand schema: `sessions`, `messages`, `tool_calls`, `skills`, `user_facts` + FTS5 virtual table `messages_fts`
+- [x] 2.3 `crates/talon-memory/src/migrations.rs` — embedded migrations via `include_str!`, versioned, run on startup
+- [x] 2.4 **[TYPE #3 final]** Expand `Database` with full `deadpool_sqlite::Pool` API; all DB operations use `.interact(|conn| { ... }).await?` pattern — no `Connection` ever crosses an await point
+- [x] 2.5 `crates/talon-memory/src/store.rs` — `MemoryStore` trait: `save_message`, `search_messages(query, limit)`, `recent_messages(session_id, n)`
+- [x] 2.6 `crates/talon-memory/src/sqlite_store.rs` — impl using FTS5 `MATCH` + `rank`
+- [x] 2.7 `crates/talon-memory/src/context.rs` — `ContextBuilder`: system prompt + USER.md + MEMORY.md + recent N messages + FTS5 retrievals, token budget (hard cap 70% context window)
+- [x] 2.8 `crates/talon-memory/src/files.rs` — `UserMd` / `MemoryMd` loaders from `~/.talon/`
+- [x] 2.9 `crates/talon-tools/src/session_search.rs` — `SessionSearchTool` impl (ApprovalLevel::Safe)
+- [x] 2.10 Integration tests: 100+ messages, FTS5 search <50ms, context stays under budget
+- [x] 2.11 Add `talon db vacuum` + `talon db stats` CLI subcommands
 
 ### Exit Gate
 ```bash

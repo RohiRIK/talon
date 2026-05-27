@@ -10,6 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 talon-core.path   = "../talon-core"
+talon-memory.path = "../talon-memory"
 
 tokio.workspace      = true
 serde.workspace      = true

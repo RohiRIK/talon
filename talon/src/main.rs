@@ -12,6 +12,7 @@ use talon_core::events::AgentEvent;
 use talon_core::tools::{Tool, ToolContext, ToolResult};
 use talon_core::tools::dispatcher::ToolDispatcher;
 use talon_llm::{AnthropicProvider, LlmProvider};
+use talon_memory::Database;
 
 // ── CLI definition ────────────────────────────────────────────────────────────
 
@@ -215,9 +216,32 @@ async fn cmd_init() -> Result<()> {
 }
 
 async fn cmd_db(action: DbAction) -> Result<()> {
+    let db_path = default_db_path();
+    let db = Database::open(db_path.to_str().unwrap_or(":memory:"))
+        .map_err(|e| anyhow::anyhow!("failed to open database: {e}"))?;
+    db.init_schema()
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to run migrations: {e}"))?;
+    cmd_db_with(&db, action).await
+}
+
+async fn cmd_db_with(db: &Database, action: DbAction) -> Result<()> {
     match action {
-        DbAction::Vacuum => println!("talon db vacuum — not yet implemented (Phase 2)"),
-        DbAction::Stats => println!("talon db stats — not yet implemented (Phase 2)"),
+        DbAction::Vacuum => {
+            db.vacuum()
+                .await
+                .map_err(|e| anyhow::anyhow!("vacuum failed: {e}"))?;
+            println!("vacuum complete");
+        }
+        DbAction::Stats => {
+            let s = db
+                .stats()
+                .await
+                .map_err(|e| anyhow::anyhow!("stats failed: {e}"))?;
+            println!("sessions : {}", s.session_count);
+            println!("messages : {}", s.message_count);
+            println!("size     : {} KB", s.size_bytes / 1024);
+        }
     }
     Ok(())
 }
@@ -348,6 +372,12 @@ fn init_tracing(level: &str) -> Result<()> {
 
     fmt().with_env_filter(filter).with_target(false).init();
     Ok(())
+}
+
+fn default_db_path() -> PathBuf {
+    talon_home()
+        .map(|p| p.join("talon.db"))
+        .unwrap_or_else(|_| PathBuf::from(":memory:"))
 }
 
 fn talon_home() -> Result<PathBuf> {
@@ -639,12 +669,16 @@ mod tests {
 
     #[tokio::test]
     async fn cmd_db_vacuum_returns_ok() -> Result<()> {
-        cmd_db(DbAction::Vacuum).await
+        let db = Database::open(":memory:").map_err(|e| anyhow::anyhow!("{e}"))?;
+        db.init_schema().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        cmd_db_with(&db, DbAction::Vacuum).await
     }
 
     #[tokio::test]
     async fn cmd_db_stats_returns_ok() -> Result<()> {
-        cmd_db(DbAction::Stats).await
+        let db = Database::open(":memory:").map_err(|e| anyhow::anyhow!("{e}"))?;
+        db.init_schema().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        cmd_db_with(&db, DbAction::Stats).await
     }
 
     #[tokio::test]
