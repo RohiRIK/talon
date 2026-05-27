@@ -22,7 +22,7 @@ Phase 1 (Core Agent Loop)
 Phase 2 (Memory)    Phase 3 (Tools Tier 1)
     │                  │
     ▼                  │
-Phase 2.5 (Iris)       │
+Phase 2.5 (Talon LTM) │
     │                  │
     ├──────────────────┘
     ▼
@@ -32,13 +32,13 @@ Phase 4 (Gateway)
 Phase 5 (Tools Tier 2 + MCP)
     │
     ▼
-Phase 6 (Plugins + Scheduling)
-    │
-    ▼
-Phase 7 (Advanced: Subagents, ACP, Evolution)
-    │
-    ▼
 v1.0 Release
+    │
+    ▼
+Phase 6 (Plugins + Scheduling) ← v1.1
+    │
+    ▼
+Phase 7 (Advanced: Subagents, ACP, Evolution) ← v2
 ```
 
 ---
@@ -49,10 +49,12 @@ v1.0 Release
 
 | Phase | Tasks | Exit Gate |
 |-------|-------|-----------|
-| **Phase 0** | Workspace, Cargo.toml, CI, Docker, install.sh | `cargo build --workspace --release` green, CI green |
+| **Phase 0** | Workspace, Cargo.toml, CI, Docker, versioning pipeline, install.sh | `cargo build --workspace --release` green, CI green, release workflow dry-run passes |
 | **Phase 0.5** | EchoTool, AnthropicProvider, inline agent loop | `cargo run -- --message "read Cargo.toml"` works E2E |
 
 **Unlocks:** All subsequent phases. The 7 load-bearing types get locked here.
+
+**Versioning is set up in Week 1, not Phase 7.** The full release pipeline (CI, signing, provenance, crates.io trusted publishing, cargo dist, Homebrew) is scaffolded in Phase 0. Every subsequent phase ships green against it. See `PLAN.md` Versioning Strategy section and Phase 0 tasks 0.9–0.24.
 
 ### Weeks 2–3 — The Agent Thinks
 
@@ -74,10 +76,12 @@ v1.0 Release
 
 | Phase | Tasks | Exit Gate |
 |-------|-------|-----------|
-| **Phase 2.5** | Two-tier memory, fact extraction, semantic dedup, hybrid search, semantic cache, Redis backend | Auto fact recall across sessions, cache hit on repeated prompts |
+| **Phase 2.5** | talon-ltm memory model, LanceDB storage, fact extraction, semantic dedup, hybrid search, semantic cache | Auto fact recall across sessions, cache hit on repeated prompts |
 | **Phase 3** *(parallel)* | ReadFile, WriteFile, EditFile, Glob, Grep, Terminal+Docker sandbox, seccomp | `rm -rf /` blocked, all file tools functional |
 
 **Why parallel:** Phase 2.5 (memory) and Phase 3 (tools) are independent — memory extends the MemoryStore trait, tools extend the Tool trait. No cross-dependency.
+
+**Memory stack decision:** LanceDB is the embedded memory storage engine (vectors + FTS + hybrid search). Redis is NOT a dependency. See `CLAUDE.md` for the full architecture decision.
 
 ### Weeks 5–6 — The Agent Talks Everywhere
 
@@ -95,7 +99,7 @@ v1.0 Release
 
 **Depends on:** Phase 3 (tool infrastructure), Phase 4 (gateway for testing).
 
-### Weeks 7–8 — The Agent Extends Itself
+### Weeks 7–8 — The Agent Extends Itself (v1.1)
 
 | Phase | Tasks | Exit Gate |
 |-------|-------|-----------|
@@ -103,13 +107,17 @@ v1.0 Release
 
 **Depends on:** Phase 5 (subprocess plugin protocol validates the abstraction first).
 
-### Weeks 8+ — The Agent Evolves
+> **Scope note:** Phase 6 is v1.1, not v1.0. wasmtime + WASI preview2 is legitimately complex. The subprocess plugin protocol in Phase 5 gives immediate value and validates the abstraction. Ship that; WASM hot-reload follows.
+
+### Weeks 8+ — The Agent Evolves (v2)
 
 | Phase | Tasks | Exit Gate |
 |-------|-------|-----------|
 | **Phase 7** | Parallel subagents (JoinSet), ACP protocol, semantic search (fastembed), Discord, GEPA evolution sidecar, release pipeline | 3+ parallel subagents, `cargo dist` produces all-platform binaries |
 
 **Depends on:** Everything. This is the capstone.
+
+> **Scope note:** Phase 7 is v2, not v1.0. The evolution sidecar (GEPA/DSPy) is explicitly deferred. Do not let Phase 7 scope block calling v1.0 done.
 
 ---
 

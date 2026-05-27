@@ -60,6 +60,58 @@ talon/                         # workspace root
 
 ---
 
+## Versioning Strategy (locked from Phase 0)
+
+> **Catchphrase:** "Secure by design. TRUST it — it's built on RUST."
+> (TRUST = T + RUST. The wordplay is the brand. Security is not an afterthought.)
+
+### Version Scheme
+
+- **Semver** (`MAJOR.MINOR.PATCH`) for all crates and the binary
+- All workspace crates share one version via `[workspace.package] version = "..."` in root `Cargo.toml`
+- Start at `0.1.0` on Phase 0 completion; `1.0.0` only when Final Acceptance Criteria are all green
+- Version is the **single source of truth** — do not hardcode it anywhere else
+
+### Tagging & Release Triggers
+
+- Tags format: `v0.1.0`, `v0.2.0`, etc. — annotated tags (`git tag -a`)
+- Releases are **manual and deliberate**: push a `v*` tag → release workflow fires
+- No automatic releases on push to `main` — CI only, no publish
+- Release branch: `main` only — no separate release branches
+
+### Changelog
+
+- `git-cliff` for automated CHANGELOG.md generation from conventional commits
+- Config: `cliff.toml` at workspace root — scopes map to crate names
+- CHANGELOG.md is committed; never hand-edited after Phase 0
+
+### Distribution Channels
+
+| Channel | What ships | Tool |
+|---------|-----------|------|
+| GitHub Releases | Pre-built binaries for all targets | `cargo dist` |
+| crates.io | Library crates only (`talon-core`, `talon-llm`, `talon-memory`, `talon-tools`) | `cargo publish` |
+| Homebrew | macOS/Linux tap formula | `cargo dist` generates |
+| AUR | Arch Linux | Manual PKGBUILD |
+| Docker Hub | OCI image | `docker buildx` + `docker push` |
+
+> **NOT npm.** Talon is a Rust binary and library. npm is not a distribution target.
+
+### CI/CD Security Principles (non-negotiable)
+
+1. **Deny-all permissions at workflow level** — `permissions: {}` at the top of every workflow; grant minimum required per-job only
+2. **Pin every action to its exact SHA** — never use mutable tags like `@v4` or `@main`; pin by commit SHA and keep the tag as a comment
+3. **OIDC for all publishing** — crates.io trusted publishing (no stored API tokens); Docker Hub OIDC; keyless binary signing via sigstore/cosign
+4. **Signed releases** — every binary signed with `cosign` (keyless, via GitHub OIDC); checksum file (`SHA256SUMS`) published with every release
+5. **SLSA provenance** — `actions/attest-build-provenance` generates L2 provenance for every release artifact
+6. **Supply chain gates** — `cargo audit` (CVEs) + `cargo deny` (licenses + banned crates) run on every PR; either fails → PR blocked
+7. **Dependabot** — automated PRs for Rust deps (`cargo`) and GitHub Actions (SHA bumps) weekly
+8. **SECURITY.md** — responsible disclosure policy in `.github/SECURITY.md` from day one
+9. **CODEOWNERS** — every path has an owner; no merge without review from the right person
+10. **No secrets in env** — secrets accessed via `${{ secrets.NAME }}` only; never echoed; never in logs
+
+---
+
 ## Anti-Patterns — Never Do This
 
 - **NEVER** redefine the 7 load-bearing types locally — import from their home crate
@@ -102,35 +154,81 @@ docker build -t talon:phase-N .
 > Node. Hermes needs Python+venv. Talon needs nothing. Single binary, zero dependencies.
 
 ### Tasks
-- [ ] 0.1 Init workspace `Cargo.toml` — `edition="2024"`, `resolver="2"`, `[workspace.package]`, `[workspace.dependencies]`
-- [ ] 0.2 Add all shared deps to `[workspace.dependencies]`: tokio (full), tracing, tracing-subscriber, serde, serde_json, futures, deadpool-sqlite, rusqlite (bundled+vtab), reqwest (rustls-tls), axum, wasmtime, teloxide, ratatui, crossterm, clap (derive). **Do NOT add async-trait — use native async fn in trait (edition 2024).**
+
+**Workspace scaffold**
+- [ ] 0.1 Init workspace `Cargo.toml` — `edition="2024"`, `resolver="2"`, `[workspace.package]` with `version = "0.1.0"`, `authors`, `license = "MIT OR Apache-2.0"`, `repository`; `[workspace.dependencies]`
+- [ ] 0.2 Add all shared deps to `[workspace.dependencies]`: tokio (full), tracing, tracing-subscriber, serde, serde_json, futures, deadpool-sqlite, rusqlite (bundled+vtab), reqwest (rustls-tls), axum, wasmtime, teloxide, ratatui, crossterm, clap (derive). **Do NOT add async-trait — edition 2024 native async fn in traits.**
 - [ ] 0.3 Scaffold crates: `cargo new --lib crates/talon-{core,llm,memory,tools,gateway,plugins}` + `cargo new talon`
 - [ ] 0.4 Add `rust-toolchain.toml` pinning stable with `components = ["rustfmt", "clippy"]`
-- [ ] 0.5 Install dev tools: `cargo install cargo-nextest cargo-chef cargo-watch cargo-audit cargo-bloat cargo-deny`
+- [ ] 0.5 Install dev tools: `cargo install cargo-nextest cargo-chef cargo-watch cargo-audit cargo-bloat cargo-deny git-cliff cargo-dist`
 - [ ] 0.6 Create `.cargo/config.toml` with aliases: `t = "nextest run"`, `c = "clippy --workspace --all-targets -- -D warnings"`
 - [ ] 0.7 Write multi-stage `Dockerfile` with `cargo-chef` layer caching, distroless final stage
 - [ ] 0.8 Write `.dockerignore` (target/, .git/, docs/, graphify-out/)
-- [ ] 0.9 Write `deny.toml` for `cargo-deny` (licenses + advisories)
-- [ ] 0.10 Write `.github/workflows/ci.yml` — matrix (ubuntu-latest / macos-latest / windows-latest): fmt → clippy → nextest → audit → deny → docker build (linux only)
-- [ ] 0.11 Write pre-commit config (lefthook or pre-commit): fmt + clippy + nextest on staged
-- [ ] 0.12 Boilerplate `talon/src/main.rs` — tracing init, clap CLI skeleton (`--message`, `--config`, `--log-level`, `--gateway`)
-- [ ] 0.13 Add `talon init` subcommand — creates `~/.talon/` dir, writes starter `config.toml`, prompts for LLM API key, stores in OS keychain (`keyring` crate)
-- [ ] 0.14 Create `docs/ADR/` with: `0001-edition-2024.md`, `0002-thiserror-vs-anyhow.md`, `0003-no-async-trait.md`, `0004-rusqlite-spawn-blocking.md`
-- [ ] 0.15 Add `README.md`, `LICENSE` (Apache-2.0 + MIT dual), `CONTRIBUTING.md` — lead with the memory story, not startup speed
-- [ ] 0.16 Create `install.sh` (curl install): downloads GitHub release binary, verifies checksum, adds to PATH
+
+**Supply-chain security**
+- [ ] 0.9 Write `deny.toml` for `cargo-deny`: allowed licenses (MIT, Apache-2.0, ISC, BSD-2-Clause, BSD-3-Clause, Zlib), deny `unmaintained` and `unsound` advisories, duplicate crate detection
+- [ ] 0.10 Write `.github/dependabot.yml` — weekly Rust (`cargo`) and GitHub Actions dep bumps; auto-assign to a dedicated `deps` label
+- [ ] 0.11 Write `.github/SECURITY.md` — responsible disclosure policy: contact email, expected response SLA (48h), embargo window (90 days), CVE process
+
+**CI workflow** (`.github/workflows/ci.yml`)
+- [ ] 0.12 Top-level: `permissions: {}` (deny all); `concurrency` block (cancel in-progress on same ref)
+- [ ] 0.13 Jobs — each with `permissions: contents: read` only:
+  - `fmt`: `cargo fmt --all -- --check`
+  - `clippy`: `cargo clippy --workspace --all-targets -- -D warnings -D clippy::unwrap_used -D clippy::expect_used`
+  - `test`: `cargo nextest run --workspace` — matrix: ubuntu / macos / windows
+  - `build`: `cargo build --workspace --release` — same matrix
+  - `audit`: `cargo audit` then `cargo deny check`
+  - `docker`: `docker build` (linux only, no push)
+- [ ] 0.14 Pin **every** action to its exact commit SHA; keep the version tag as a comment (`# v4.1.1`). Never use mutable tags.
+
+**Release workflow** (`.github/workflows/release.yml`)
+- [ ] 0.15 Trigger: `push: tags: ['v[0-9]+.[0-9]+.[0-9]+']` only — not on branch push
+- [ ] 0.16 Top-level `permissions: {}`. Per-job grants:
+  - build job: `contents: read`
+  - sign + attest job: `contents: write`, `id-token: write`, `attestations: write`
+  - publish job: `contents: read`, `id-token: write`
+- [ ] 0.17 Build job: `cargo dist build --release` for all targets (linux x86_64/aarch64, macos x86_64/aarch64, windows x86_64); upload artifacts
+- [ ] 0.18 Sign + attest job:
+  - Install `cosign` (keyless, via GitHub OIDC — no private key stored anywhere)
+  - Sign each binary: `cosign sign-blob --yes --oidc-issuer=https://token.actions.githubusercontent.com`
+  - Generate `SHA256SUMS` and sign it
+  - SLSA L2 provenance: `actions/attest-build-provenance` for every artifact
+- [ ] 0.19 GitHub Release job: create release from tag, upload binaries + signatures + `SHA256SUMS` + provenance; auto-generate release notes from `git-cliff`
+- [ ] 0.20 Publish job (crates.io trusted publishing — no stored token):
+  - Configure crates.io trusted publisher for this repo in crates.io dashboard
+  - Publish library crates in dependency order: `talon-core` → `talon-llm` → `talon-memory` → `talon-tools` → `talon-gateway` → `talon-plugins`
+  - `cargo publish --no-verify` (already tested in CI)
+- [ ] 0.21 Docker publish job: `docker buildx build --platform linux/amd64,linux/arm64`, push to Docker Hub using OIDC; sign image with `cosign`
+
+**Versioning tooling**
+- [ ] 0.22 Write `cliff.toml` — scopes: `core`, `llm`, `memory`, `tools`, `gateway`, `plugins`, `ci`, `release`; tag pattern `v[0-9]+\.[0-9]+\.[0-9]+`
+- [ ] 0.23 Write `dist-workspace.toml` — `cargo dist` config: targets, installers (shell script, Homebrew), checksum (sha256), GitHub CI integration
+- [ ] 0.24 Write `install.sh` — verifies SHA256 checksum and cosign signature before installing; prints "TRUST it. It's RUST." on success
+
+**Code ownership + repo hygiene**
+- [ ] 0.25 Write `.github/CODEOWNERS` — `* @<owner>` default; crate-level ownership as team grows
+- [ ] 0.26 Write pre-commit config (`lefthook.yml`): fmt + clippy + nextest on staged files
+- [ ] 0.27 Boilerplate `talon/src/main.rs` — tracing init, clap CLI skeleton (`--message`, `--config`, `--log-level`, `--gateway`)
+- [ ] 0.28 Add `talon init` subcommand — creates `~/.talon/` dir, writes starter `config.toml`, prompts for LLM API key, stores in OS keychain (`keyring` crate)
+- [ ] 0.29 Create `docs/ADR/` — `0001-edition-2024.md`, `0002-thiserror-vs-anyhow.md`, `0003-no-async-trait.md`, `0004-rusqlite-spawn-blocking.md`, `0005-lancedb-memory-backend.md`, `0006-semver-release-pipeline.md`
+- [ ] 0.30 Add `README.md` — lead with the memory story ("TRUST it — it's built on RUST"), installation (`curl | sh`), quick start; `LICENSE` (Apache-2.0 + MIT dual); `CONTRIBUTING.md`
 
 ### Exit Gate
 ```bash
 cargo build --workspace --release
 cargo nextest run --workspace          # 0 tests, 0 failures
 cargo clippy --workspace -- -D warnings -D clippy::unwrap_used
+cargo audit && cargo deny check
 docker build -t talon:0 .
-# CI green on push for all three OS targets
+# CI green on all three OS targets
+# Release workflow dry-run: push a v0.0.1-test tag, verify signing + attestation, delete tag
 ```
 
 ### Risks
 - edition 2024 ecosystem compatibility (stable since Feb 2025) → pin toolchain; track crates that lag
-- `async fn in trait` object safety — `dyn LlmProvider` with async fn needs `#[async_trait]` shim only for object-safe trait objects; use concrete types or `Box<dyn Future>` return if needed
+- `async fn in trait` object safety — use concrete types or `Pin<Box<dyn Future>>` if `dyn LlmProvider` is needed
+- crates.io trusted publishing requires dashboard configuration before first publish — do the one-time setup during Phase 0, not at release time
+- `cargo dist` config can require iteration — test with a `v0.0.1-test` tag before the real `v0.1.0`
 
 ---
 
@@ -390,42 +488,50 @@ cargo dist build --release   # produces tarballs for all targets
 
 ---
 
-## Phase 2.5 — Redis Iris Memory Layer (Week 4–5, parallel with Phase 3)
+## Phase 2.5 — Talon LTM + LanceDB Memory Layer (Week 4–5, parallel with Phase 3)
 
 > **Edge:** Two-tier memory (working + long-term) with automatic fact extraction and semantic
-> deduplication. No other open-source agent does this. Optional Redis backend for sub-ms reads
-> and native vector search. Default SQLite for zero-dependency simplicity.
+> deduplication. No other open-source agent does this in a single Rust binary.
 >
-> Based on Redis Iris architecture analysis — see `docs/09_Redis_Iris/`.
+> **Architecture decision (final):** LanceDB is the memory storage engine. SQLite remains for
+> sessions/config/coordination. Redis is NOT a dependency. The concepts from Redis Iris
+> (two-tier memory, fact extraction, semantic dedup, hybrid search, semantic cache) are implemented
+> in pure Rust via Talon LTM + LanceDB. See `CLAUDE.md` Memory Stack section for the full decision.
+>
+> **Talon LTM** = own Rust crate (`crates/talon-memory/src/ltm/`), claude-ltm blueprint (doc #72).
+>   Memory model: categories, importance 1–5, decay, FTS5-first search, auto-extraction.
+> **LanceDB** = embedded vector + FTS + hybrid search. No server. See doc #73.
+> **Honker** = optional reactive layer (queues, NOTIFY/LISTEN, cron) — add post-v1.0. See doc #76.
 
 ### Tasks
-- [ ] 2.5.1 `crates/talon-memory/src/working.rs` — `WorkingMemory` struct: message window management with automatic LLM summarization when token budget exceeded (Iris two-tier pattern, doc #67)
-- [ ] 2.5.2 `crates/talon-memory/src/facts.rs` — `FactExtractor`: LLM-powered fact extraction from conversation turns; produces structured `Fact { content, topic, entities, importance }` (Iris long-term memory pattern)
-- [ ] 2.5.3 `crates/talon-memory/src/dedup.rs` — Semantic deduplication: embed new facts, cosine-compare against existing (threshold 0.85), merge or update duplicates instead of appending
-- [ ] 2.5.4 `crates/talon-memory/src/promotion.rs` — Memory promotion: post-session hook extracts high-importance facts from working memory → long-term store
-- [ ] 2.5.5 `crates/talon-memory/src/hybrid_search.rs` — Hybrid retrieval: vector KNN + FTS5 keyword, fused with Reciprocal Rank Fusion (RRF). Works against both SQLite and Redis backends.
-- [ ] 2.5.6 `crates/talon-memory/src/cache.rs` — `SemanticCache`: embed LLM prompts, return cached response if similarity > 0.95. LRU in-memory default, Redis optional. TTL-based expiry. (Iris LangCache pattern, doc #70)
-- [ ] 2.5.7 Add `redis` crate dependency behind `feature = "redis-memory"` (tokio-comp, json features)
-- [ ] 2.5.8 `crates/talon-memory/src/redis_store.rs` — `RedisMemoryStore` impl of `MemoryStore` trait: RediSearch `FT.CREATE` with vector field, `FT.SEARCH` hybrid queries, RedisJSON storage (doc #68)
-- [ ] 2.5.9 `crates/talon-memory/src/backend.rs` — `MemoryBackend` enum: `Sqlite | Redis | Hybrid { hot: Redis, durable: Sqlite }`, selected via `config.toml` `[memory] backend = "..."` (doc #68)
-- [ ] 2.5.10 Update `ContextBuilder` (Phase 2 task 2.7) to use `WorkingMemory::compact()` for auto-summarization instead of static window trimming
-- [ ] 2.5.11 Integration tests: fact extraction round-trip, dedup merges similar facts, hybrid search returns ranked results, semantic cache hit/miss, Redis backend (feature-gated)
-- [ ] 2.5.12 `talon cache clear` + `talon cache stats` CLI subcommands
+- [ ] 2.5.1 Add `lancedb`, `arrow-array`, `tokio-stream` to `[workspace.dependencies]`
+- [ ] 2.5.2 `crates/talon-memory/src/lance_store.rs` — `LanceMemoryStore` impl of `MemoryStore` trait: LanceDB table `memories` with columns `(id, content, category, importance, created_at, accessed_at, decay_score, embedding BLOB)`. FTS via LanceDB's built-in full-text index.
+- [ ] 2.5.3 `crates/talon-memory/src/ltm/mod.rs` — **Talon LTM** memory model: `Memory { id, content, category, importance: u8 (1–5), decay_score: f32, tags, entities }`. Categories: `user_preference`, `decision`, `fact`, `pattern`, `gotcha`.
+- [ ] 2.5.4 `crates/talon-memory/src/working.rs` — `WorkingMemory` struct: token-budgeted message window, auto-summarizes via LLM call when budget exceeded (claude-ltm two-tier pattern, doc #67)
+- [ ] 2.5.5 `crates/talon-memory/src/facts.rs` — `FactExtractor`: LLM-powered extraction per session end; produces `Vec<Memory>` with category, importance score, entities
+- [ ] 2.5.6 `crates/talon-memory/src/dedup.rs` — Semantic deduplication: embed new memories, cosine-compare against existing (threshold 0.85), merge duplicates instead of appending
+- [ ] 2.5.7 `crates/talon-memory/src/promotion.rs` — Memory promotion: post-session hook moves high-importance working memory facts → LanceDB long-term store
+- [ ] 2.5.8 `crates/talon-memory/src/hybrid_search.rs` — Hybrid retrieval: LanceDB vector KNN + FTS, fused with Reciprocal Rank Fusion (RRF)
+- [ ] 2.5.9 `crates/talon-memory/src/cache.rs` — `SemanticCache`: embed LLM prompts, return cached response if similarity > 0.95. LRU in-memory with TTL. No Redis. (Iris LangCache pattern, doc #70)
+- [ ] 2.5.10 `crates/talon-memory/src/decay.rs` — `DecayEngine`: time-based importance decay, run as periodic task (once per day, not per query)
+- [ ] 2.5.11 Update `ContextBuilder` (Phase 2 task 2.7) to use `WorkingMemory::compact()` for auto-summarization instead of static window trimming
+- [ ] 2.5.12 Integration tests: fact extraction round-trip, dedup merges similar facts, hybrid search returns ranked results, semantic cache hit/miss, decay reduces importance over time
+- [ ] 2.5.13 `talon cache clear` + `talon cache stats` + `talon memory stats` CLI subcommands
 
 ### Exit Gate
 ```bash
 cargo nextest run -p talon-memory
-cargo nextest run -p talon-memory --features redis-memory  # requires Redis running
 cargo run --release -- --message "remember that I prefer dark mode"
 # then in new session:
 cargo run --release -- --message "what do you know about my preferences?"
-# expects: recalls "prefers dark mode" via semantic search
+# expects: recalls "prefers dark mode" via LanceDB hybrid search
 ```
 
 ### Risks
-- LLM cost for automatic fact extraction — mitigate with semantic cache + batch extraction (once per session, not per turn)
-- Redis not available — graceful fallback to SQLite-only; warn on startup, never crash
-- Embedding model size — `fastembed` adds 30-60MB; keep behind `semantic-search` feature flag
+- LLM cost for automatic fact extraction — mitigate with semantic cache + batch extraction (once per session end, not per turn)
+- LanceDB Rust API stability (v0.9, pre-1.0) — pin version, test on upgrade
+- Embedding model size — `fastembed` adds 30–60 MB; keep behind `semantic-search` feature flag
+- Fact extraction quality — LLM determines what's worth remembering; tune the extraction prompt carefully
 
 ---
 
@@ -444,9 +550,9 @@ cargo run --release -- --message "what do you know about my preferences?"
 - [ ] Parallel delegation spawns 3+ subagents, merged result
 - [ ] CI matrix green on linux/macos/windows
 - [ ] FTS5 session search returns results across projects
-- [ ] Two-tier memory: auto fact extraction + semantic dedup operational
+- [ ] Two-tier memory (talon-ltm + LanceDB): auto fact extraction + semantic dedup operational
 - [ ] Semantic cache reduces repeated LLM calls (verified with cron test)
-- [ ] Redis memory backend works when `feature = "redis-memory"` enabled
+- [ ] LanceDB hybrid search (vector KNN + FTS + RRF) returns ranked results across sessions
 
 ## Beat the Competition
 
