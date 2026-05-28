@@ -60,7 +60,7 @@ clap             = { version = "4",    features = ["derive"] }
 wasmtime         = "43"
 
 # OS keychain
-keyring          = "3"
+keyring          = "4"
 
 # Error handling
 thiserror        = "1"
