@@ -57,7 +57,7 @@ teloxide         = { version = "0.13", features = ["macros"] }
 clap             = { version = "4",    features = ["derive"] }
 
 # WASM plugin host (Phase 6, feature-flagged)
-wasmtime         = "43"
+wasmtime         = "45"
 
 # OS keychain
 keyring          = "3"
