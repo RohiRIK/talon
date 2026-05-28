@@ -1,8 +1,10 @@
 pub mod docker;
 pub mod native;
+pub mod tool;
 
 pub use docker::DockerSandbox;
 pub use native::NativeBackend;
+pub use tool::TerminalTool;
 
 use std::{future::Future, pin::Pin};
 

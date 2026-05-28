@@ -420,7 +420,7 @@ backend = "docker"
 - [x] 3.10 `Dockerfile.sandbox` — minimal Alpine, no root, no setuid
 - [x] 3.11 `crates/talon-tools/src/timeout.rs` — `TimeoutWrapper<T: Tool>` decorator using `tokio::time::timeout`
 - [x] 3.12 `dispatch_sequential` is default; `dispatch_parallel` uses `JoinSet` + global `Semaphore` (default cap 4), opt-in via `ToolContext::allow_parallel`
-- [ ] 3.13 Integration tests: read/write/grep/glob work; `rm -rf /` blocked in Docker mode; native mode warns and tags output; timeout kills hung process
+- [x] 3.13 Integration tests: read/write/grep/glob work; `rm -rf /` blocked in Docker mode; native mode warns and tags output; timeout kills hung process
 
 ### Exit Gate
 ```bash

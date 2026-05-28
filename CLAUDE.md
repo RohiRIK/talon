@@ -38,8 +38,8 @@ This applies to: Talon's system prompt, tool `schema()` descriptions, `SessionSe
 
 ## Current State
 
-**Phase: 3 — Next.** Phases 0–2 + 1.5 complete (2026-05-28). Working prototype, core agent loop, FTS5 memory, and all additional LLM providers done. `cargo nextest run --workspace` → 219/219 green.
-The next action is Phase 3 (Tools Tier 1 — file tools, terminal sandbox, Docker/native backends, approval membrane integration). See `PLAN.md` Phase 3 tasks.
+**Phase: 4 — Next.** Phases 0–3 complete (2026-05-28). Working prototype, core agent loop, FTS5 memory, all LLM providers, and full tools tier 1 done. `cargo nextest run --workspace` → 275/275 green.
+The next action is Phase 4 (Gateway — CLI, Telegram, HTTP, talon init onboarding wizard). See `PLAN.md` Phase 4 tasks.
 
 ---
 
@@ -216,7 +216,7 @@ docker build -t talon:phase-N .
 | 1.5 | Additional LLM Providers | ✅ Complete (2026-05-28) | Codex, ClaudeCode, Antigravity + live smoke test, 219 tests green |
 | 2 | Memory (FTS5) | ✅ Complete (2026-05-27) | FTS5 search <50ms, context within token budget |
 | 2.5 | Talon LTM + LanceDB | ⬜ Not started | Auto fact recall across sessions |
-| 3 | Tools Tier 1 | ⬜ Not started | `rm -rf /` blocked, all file tools functional |
+| 3 | Tools Tier 1 | ✅ Complete (2026-05-28) | 275 tests green; fs tools + Docker/native sandbox + TimeoutWrapper |
 | 4 | Gateway | ⬜ Not started | CLI + Telegram + HTTP all functional |
 | 5 | Tools Tier 2 + MCP | ⬜ Not started | MCP server tools discoverable, web search works |
 | 6 | Plugins + Scheduling | ⬜ v1.1 | WASM plugin loads without restart |
