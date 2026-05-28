@@ -64,6 +64,10 @@ jobs:
         with:
           tool: nextest
       - run: cargo nextest run --workspace
+      - name: Provider feature tests (codex, claude-code, antigravity, github-copilot)
+        run: >-
+          cargo nextest run -p talon-llm
+          --features talon-llm/codex-provider,talon-llm/claude-code-provider,talon-llm/antigravity-provider,talon-llm/github-copilot-provider
 
   # ── build ─────────────────────────────────────────────────────────────────────
   build:
