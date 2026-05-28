@@ -18,3 +18,8 @@ serde_json.workspace = true
 reqwest.workspace    = true
 thiserror.workspace  = true
 tracing.workspace    = true
+
+globset  = "0.4"
+regex    = "1"
+walkdir  = "2"
+tempfile = "3"

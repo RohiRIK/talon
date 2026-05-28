@@ -1,0 +1,48 @@
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "syscalls": [
+    {
+      "names": [
+        "mount",
+        "umount",
+        "umount2",
+        "pivot_root",
+        "chroot",
+        "ptrace",
+        "process_vm_readv",
+        "process_vm_writev",
+        "kexec_load",
+        "kexec_file_load",
+        "reboot",
+        "syslog",
+        "sysfs",
+        "acct",
+        "create_module",
+        "delete_module",
+        "finit_module",
+        "init_module",
+        "ioperm",
+        "iopl",
+        "nfsservctl",
+        "quotactl",
+        "settimeofday",
+        "adjtimex",
+        "clock_settime",
+        "socket",
+        "socketpair",
+        "bind",
+        "connect",
+        "listen",
+        "accept",
+        "accept4",
+        "sendto",
+        "recvfrom",
+        "sendmsg",
+        "recvmsg",
+        "setsockopt",
+        "getsockopt"
+      ],
+      "action": "SCMP_ACT_ERRNO"
+    }
+  ]
+}

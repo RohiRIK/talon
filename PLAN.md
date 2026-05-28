@@ -402,24 +402,24 @@ backend = "docker"
 - A `[NATIVE]` tag is prepended to every tool result so the LLM and user always know which mode is active
 
 ### Tasks
-- [ ] 3.1 `crates/talon-tools/src/fs/read.rs` — `ReadFileTool` (Safe), 10MB size limit
-- [ ] 3.2 `crates/talon-tools/src/fs/write.rs` — `WriteFileTool` (NeedsApproval), atomic write via temp+rename
-- [ ] 3.3 `crates/talon-tools/src/fs/edit.rs` — `EditFileTool` (NeedsApproval), exact-string replace, fails if not unique
-- [ ] 3.4 `crates/talon-tools/src/fs/glob.rs` — `GlobTool` (Safe) using `globset`
-- [ ] 3.5 `crates/talon-tools/src/fs/grep.rs` — `GrepTool` (Safe) using ripgrep core
-- [ ] 3.6 `crates/talon-tools/src/terminal/mod.rs` — `TerminalTool` (Dangerous), `SandboxBackend` trait:
+- [x] 3.1 `crates/talon-tools/src/fs/read.rs` — `ReadFileTool` (Safe), 10MB size limit
+- [x] 3.2 `crates/talon-tools/src/fs/write.rs` — `WriteFileTool` (NeedsApproval), atomic write via temp+rename
+- [x] 3.3 `crates/talon-tools/src/fs/edit.rs` — `EditFileTool` (NeedsApproval), exact-string replace, fails if not unique
+- [x] 3.4 `crates/talon-tools/src/fs/glob.rs` — `GlobTool` (Safe) using `globset`
+- [x] 3.5 `crates/talon-tools/src/fs/grep.rs` — `GrepTool` (Safe) using ripgrep core
+- [x] 3.6 `crates/talon-tools/src/terminal/mod.rs` — `TerminalTool` (Dangerous), `SandboxBackend` trait:
   ```rust
   pub trait SandboxBackend: Send + Sync {
       fn mode(&self) -> SandboxMode;  // Docker | Native
       async fn execute(&self, cmd: &str, ctx: &ToolContext) -> ToolResult;
   }
   ```
-- [ ] 3.7 `crates/talon-tools/src/terminal/docker.rs` — `DockerSandbox`: `docker run --rm --network=none --memory=512m --security-opt=seccomp=talon-seccomp.json`
-- [ ] 3.8 `crates/talon-tools/src/terminal/native.rs` — `NativeBackend`: runs on host via `tokio::process::Command`; always `ApprovalLevel::Dangerous`; prepends `[NATIVE]` tag; one-time stderr warning + `y` acknowledgement stored in config
-- [ ] 3.9 `crates/talon-tools/src/terminal/seccomp.json` — blocks: mount, ptrace, kexec_load, reboot, raw network
-- [ ] 3.10 `Dockerfile.sandbox` — minimal Alpine, no root, no setuid
-- [ ] 3.11 `crates/talon-tools/src/timeout.rs` — `TimeoutWrapper<T: Tool>` decorator using `tokio::time::timeout`
-- [ ] 3.12 `dispatch_sequential` is default; `dispatch_parallel` uses `JoinSet` + global `Semaphore` (default cap 4), opt-in via `ToolContext::allow_parallel`
+- [x] 3.7 `crates/talon-tools/src/terminal/docker.rs` — `DockerSandbox`: `docker run --rm --network=none --memory=512m --security-opt=seccomp=talon-seccomp.json`
+- [x] 3.8 `crates/talon-tools/src/terminal/native.rs` — `NativeBackend`: runs on host via `tokio::process::Command`; always `ApprovalLevel::Dangerous`; prepends `[NATIVE]` tag; one-time stderr warning + `y` acknowledgement stored in config
+- [x] 3.9 `crates/talon-tools/src/terminal/seccomp.json` — blocks: mount, ptrace, kexec_load, reboot, raw network
+- [x] 3.10 `Dockerfile.sandbox` — minimal Alpine, no root, no setuid
+- [x] 3.11 `crates/talon-tools/src/timeout.rs` — `TimeoutWrapper<T: Tool>` decorator using `tokio::time::timeout`
+- [x] 3.12 `dispatch_sequential` is default; `dispatch_parallel` uses `JoinSet` + global `Semaphore` (default cap 4), opt-in via `ToolContext::allow_parallel`
 - [ ] 3.13 Integration tests: read/write/grep/glob work; `rm -rf /` blocked in Docker mode; native mode warns and tags output; timeout kills hung process
 
 ### Exit Gate
