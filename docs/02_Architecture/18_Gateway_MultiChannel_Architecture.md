@@ -1,6 +1,6 @@
 # Gateway & Multi-Channel Architecture
 
-> **Status:** ✅ Complete
+> **Status:** ✅ Built (Phase 4 complete, 2026-05-28)
 > **Category:** Architecture
 
 ---
@@ -8,307 +8,214 @@
 ## 1. Design Principle
 
 The gateway layer is **thin**. Its only jobs are:
-1. Receive input from a channel (Telegram message, HTTP POST, CLI keystroke)
-2. Convert it to `AgentInput`
+1. Receive input from a channel (Telegram message, HTTP POST, CLI keystroke, TUI keypress)
+2. Build a fresh `Agent` from `GatewayContext`
 3. Forward `AgentEvent` stream back to that channel
 
-All business logic lives in `talon-core`. Gateways are interchangeable.
+All business logic lives in `talon-core`. Gateways are interchangeable and degrade gracefully.
 
 ---
 
 ## 2. Architecture Diagram
 
 ```
-                    ┌─────────────────────────────────────┐
-                    │         talon-gateway              │
-                    │                                     │
-  Telegram ─────►  │  TelegramGateway                    │
-  Discord  ─────►  │  DiscordGateway    ──► AgentInput   │
-  CLI TUI  ─────►  │  CliGateway                │        │
-  HTTP API ─────►  │  HttpGateway               ▼        │
-                    │                    AgentRouter      │
-                    └──────────────────────┬──────────────┘
-                                           │
-                                           ▼
-                              ┌────────────────────────┐
-                              │      talon-core       │
-                              │   AgentLoop::run()     │
-                              └────────────────────────┘
-                                           │
-                                    AgentEvent stream
-                                           │
-                    ┌──────────────────────┘
-                    ▼
-              GatewayRouter (mpsc broadcast)
-            ├── TelegramGateway::send()
-            ├── DiscordGateway::send()
-            └── CliGateway::print()
+  User (Telegram) ──► TelegramGateway ─┐
+  User (browser)  ──► HttpGateway     ─┤
+  User (terminal) ──► TuiGateway      ─┤── GatewayContext::build_agent()
+  User (terminal) ──► CliGateway      ─┘         │
+                                                   ▼
+                                        Agent::run(session_id, text)
+                                                   │
+                                          mpsc::Sender<AgentEvent>
+                                                   │
+                  ┌────────────────────────────────┴──────────┐
+                  │  AgentEvent variants handled per-gateway  │
+                  │  Text       → print / send / render       │
+                  │  ToolCalled → spinner / panel entry       │
+                  │  ToolResult → update panel                │
+                  │  ApprovalRequested → prompt user          │
+                  │  Completed  → finalize                    │
+                  └────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Core Gateway Trait
+## 3. Core Types
+
+### Gateway trait (`crates/talon-gateway/src/lib.rs`)
 
 ```rust
-// talon-gateway/src/lib.rs
-
-#[async_trait]
+// Object-safe: returns Pin<Box<dyn Future>> instead of async fn
+// so it can be stored as Arc<dyn Gateway> in GatewayRegistry.
 pub trait Gateway: Send + Sync {
     fn name(&self) -> &str;
+    fn render_mode(&self) -> RenderMode;
+    fn run(&self) -> Pin<Box<dyn Future<Output = Result<(), GatewayError>> + Send + '_>>;
+}
+```
 
-    /// Start listening for incoming messages.
-    /// Each incoming message produces an AgentInput sent on tx.
-    async fn listen(&self, tx: mpsc::Sender<AgentInput>) -> Result<(), GatewayError>;
+### RenderMode
 
-    /// Deliver an event (text chunk, tool output, final message) to this channel.
-    async fn deliver(&self, event: &DeliveryEvent) -> Result<(), GatewayError>;
+```rust
+pub enum RenderMode {
+    Plain,       // raw text, no colour — CI, piped stdin, $TERM=dumb
+    Accessible,  // line-by-line, no escapes — screen readers, --accessible
+    Tui,         // full ratatui TUI — interactive terminal only
+}
+```
+
+Auto-detected at startup via `detect_capabilities()` (`tui/render.rs`):
+checks `NO_COLOR`, `TERM`, `isatty`, `TALON_ACCESSIBLE` in order.
+
+### GatewayContext
+
+```rust
+// Shared infra — constructed once in main(), passed to all gateways.
+pub struct GatewayContext {
+    pub provider: Arc<dyn LlmProvider>,
+    pub tools: Vec<Arc<dyn Tool>>,
+    pub db: Option<Arc<Database>>,
 }
 
-pub struct AgentInput {
-    pub session_id: Uuid,
-    pub user_id: String,
-    pub platform: String,           // "telegram", "discord", "cli", "http"
-    pub chat_id: String,
-    pub thread_id: Option<String>,
-    pub content: InputContent,
-    pub reply_fn: Arc<dyn Fn(DeliveryEvent) + Send + Sync>,
-}
-
-pub enum InputContent {
-    Text(String),
-    Voice { file_path: PathBuf, duration_secs: u32 },
-    Media { file_path: PathBuf, caption: Option<String> },
-}
-
-pub enum DeliveryEvent {
-    TextChunk(String),              // streaming partial output
-    FinalMessage(String),           // complete message
-    MediaFile { path: PathBuf, caption: Option<String> },
-    ApprovalRequest { tool: String, description: String, id: Uuid },
-    ApprovalResult { id: Uuid, approved: bool },
-    Error(String),
+impl GatewayContext {
+    // Builds a fresh Agent + ToolDispatcher per request.
+    // Avoids needing Clone on the dispatcher.
+    pub fn build_agent(&self, event_tx: mpsc::Sender<AgentEvent>) -> Agent { ... }
 }
 ```
 
 ---
 
-## 4. Telegram Gateway
+## 4. LLM Provider Selection
+
+Selected via `TALON_LLM_PROVIDER` env var at startup (`talon/src/main.rs`):
+
+| Value | Provider | Auth |
+|-------|----------|------|
+| `anthropic` (default) | `AnthropicProvider` | `TALON_LLM_API_KEY` or OS keychain |
+| `github-copilot` or `copilot` | `GitHubCopilotProvider` | `GITHUB_TOKEN` or `gh auth token` |
+
+Key-less providers (GitHub Copilot, ClaudeCode) skip the API-key gate entirely.
+
+Model override: `TALON_LLM_MODEL=claude-sonnet-4.6` (each provider has its own default).
+
+---
+
+## 5. CLI Gateway (`crates/talon-gateway/src/cli.rs`)
+
+Single-user REPL over stdin/stdout. Falls back to `CliGateway` automatically
+when `TuiGateway` detects a non-interactive terminal.
+
+- `indicatif` spinner while agent thinks
+- `/quit`, `/help` commands
+- `--message "..."` flag for single-turn non-interactive mode
+- Approval prompts written to stderr (doesn't interrupt the spinner)
+
+---
+
+## 6. TUI Gateway (`crates/talon-gateway/src/tui/`)
+
+Full ratatui terminal UI. MVU (Model-View-Update, Elm-style) pattern.
+
+```
+App (model) ──► update(Msg) → App   ← pure, no side effects
+                                         │
+                                    render(Frame)   ← also pure
+```
+
+### Components
+
+| File | Widget | Notes |
+|------|--------|-------|
+| `components/chat.rs` | `ChatView` | Streaming markdown, inline bold/italic/code |
+| `components/input.rs` | `InputBar` | `tui-textarea`, Ctrl+Enter to submit |
+| `components/tools.rs` | `ToolPanel` | Collapsible (Tab), icons ⠿/✓/✗ |
+| `components/status.rs` | `StatusBar` | Model, session ID, tokens, `[NATIVE]` badge |
+| `layout.rs` | `SplitPane` | `<120 cols` stacked, `≥120 cols` side-by-side |
+
+### Degradation
+
+`TuiGateway` calls `detect_capabilities()` at construction time.
+If the terminal is not interactive (`Plain` or `Accessible`), it delegates
+the entire run to `CliGateway` — no raw-mode is entered.
+
+---
+
+## 7. HTTP Gateway (`crates/talon-gateway/src/http.rs`)
+
+Single `POST /v1/messages` endpoint via axum.
+
+```
+POST /v1/messages
+Body: { "content": "hello", "session_id": "optional-uuid" }
+→    { "content": "response", "session_id": "uuid" }
+```
+
+Auto-approves `Safe` tools; auto-denies `Dangerous` tools.
+Callers that need approval should use TUI or CLI.
+
+---
+
+## 8. Telegram Gateway (`crates/talon-gateway/src/telegram.rs`)
+
+Feature-gated: `--features talon-gateway/telegram`.
+
+### User Auth (`UserAuth`)
+
+First-run auto-registration pattern:
+
+```
+First message received
+  → no owner on file
+  → register sender's user ID
+  → write ~/.talon/telegram_owner
+  → all subsequent senders from other IDs → "This is a private assistant."
+```
+
+Override: `TELEGRAM_ALLOWED_USER_IDS=123456789,987654321` (comma-separated).
+
+The handler uses `Update::filter_message().endpoint(|bot, msg|)` directly
+(not `filter_map`) to avoid dptree 3-tuple injection bound limits.
+
+### Running
+
+```bash
+TELEGRAM_BOT_TOKEN=<token> \
+TALON_LLM_PROVIDER=github-copilot \
+cargo run --features talon-gateway/telegram -- --gateway telegram
+```
+
+---
+
+## 9. SendMessageTool (`crates/talon-tools/src/send_message.rs`)
+
+Allows the agent to push outbound messages to any registered gateway channel.
+Approval level: `NeedsApproval` — user must confirm before the agent sends.
 
 ```rust
-pub struct TelegramGateway {
-    bot: Bot,
-    home_chat_id: ChatId,
-}
-
-#[async_trait]
-impl Gateway for TelegramGateway {
-    fn name(&self) -> &str { "telegram" }
-
-    async fn listen(&self, tx: mpsc::Sender<AgentInput>) -> Result<(), GatewayError> {
-        let handler = dptree::entry()
-            .branch(Update::filter_message().endpoint(
-                |bot: Bot, msg: Message, tx: mpsc::Sender<AgentInput>| async move {
-                    if let Some(text) = msg.text() {
-                        let _ = tx.send(AgentInput {
-                            session_id: Uuid::new_v4(),
-                            user_id: msg.from().map(|u| u.id.to_string())
-                                .unwrap_or_default(),
-                            platform: "telegram".to_string(),
-                            chat_id: msg.chat.id.to_string(),
-                            thread_id: msg.thread_id.map(|id| id.to_string()),
-                            content: InputContent::Text(text.to_string()),
-                            reply_fn: Arc::new(move |event| {
-                                // Handled by deliver()
-                            }),
-                        }).await;
-                    }
-                    respond(())
-                }
-            ));
-
-        Dispatcher::builder(self.bot.clone(), handler)
-            .build()
-            .dispatch()
-            .await;
-
-        Ok(())
-    }
-
-    async fn deliver(&self, event: &DeliveryEvent) -> Result<(), GatewayError> {
-        match event {
-            DeliveryEvent::FinalMessage(text) => {
-                self.bot.send_message(self.home_chat_id, text)
-                    .parse_mode(ParseMode::MarkdownV2)
-                    .await?;
-            }
-            DeliveryEvent::MediaFile { path, caption } => {
-                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                match ext {
-                    "png" | "jpg" | "jpeg" | "webp" => {
-                        self.bot.send_photo(self.home_chat_id, InputFile::file(path))
-                            .caption(caption.clone().unwrap_or_default())
-                            .await?;
-                    }
-                    "mp4" => {
-                        self.bot.send_video(self.home_chat_id, InputFile::file(path))
-                            .await?;
-                    }
-                    "ogg" | "mp3" => {
-                        self.bot.send_voice(self.home_chat_id, InputFile::file(path))
-                            .await?;
-                    }
-                    _ => {
-                        self.bot.send_document(self.home_chat_id, InputFile::file(path))
-                            .await?;
-                    }
-                }
-            }
-            DeliveryEvent::ApprovalRequest { tool, description, id } => {
-                let keyboard = InlineKeyboardMarkup::new(vec![vec![
-                    InlineKeyboardButton::callback("✅ Approve", format!("approve:{id}")),
-                    InlineKeyboardButton::callback("❌ Deny", format!("deny:{id}")),
-                ]]);
-                self.bot.send_message(
-                    self.home_chat_id,
-                    format!("⚠️ **{}** requires approval:\n\n{}", tool, description)
-                )
-                .reply_markup(keyboard)
-                .await?;
-            }
-            _ => {}
-        }
-        Ok(())
-    }
+pub trait MessageSink: Send + Sync {
+    fn send(&self, channel_id: &str, content: &str) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }
 ```
 
 ---
 
-## 5. HTTP Gateway (axum)
+## 10. GatewayRegistry (`crates/talon-gateway/src/registry.rs`)
 
 ```rust
-pub struct HttpGateway {
-    bind: SocketAddr,
-    auth_token: Option<String>,
-}
-
-pub fn router(state: Arc<AppState>) -> axum::Router {
-    axum::Router::new()
-        .route("/chat", post(chat_handler))
-        .route("/chat/stream", post(chat_stream_handler))
-        .route("/health", get(health_handler))
-        .route("/version", get(version_handler))
-        .layer(
-            ServiceBuilder::new()
-                .layer(TraceLayer::new_for_http())
-                .layer(TimeoutLayer::new(Duration::from_secs(300)))
-        )
-        .with_state(state)
-}
-
-async fn chat_handler(
-    State(app): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Json(req): Json<ChatRequest>,
-) -> Result<Json<ChatResponse>, StatusCode> {
-    verify_auth(&app, &headers)?;
-
-    let result = app.run_agent(req.message, req.session_id).await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(Json(ChatResponse {
-        response: result.final_response,
-        session_id: result.session_id,
-    }))
-}
-
-async fn chat_stream_handler(
-    State(app): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Json(req): Json<ChatRequest>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    // Returns Server-Sent Events for streaming
-    let (tx, rx) = mpsc::channel::<AgentEvent>(64);
-
-    tokio::spawn(async move {
-        app.run_agent_with_events(req.message, req.session_id, tx).await.ok();
-    });
-
-    let stream = ReceiverStream::new(rx).map(|event| {
-        let data = serde_json::to_string(&event).unwrap_or_default();
-        Ok(Event::default().data(data))
-    });
-
-    Sse::new(stream).keep_alive(KeepAlive::default())
+pub struct GatewayRegistry {
+    gateways: HashMap<ChannelId, Arc<dyn Gateway>>,
 }
 ```
 
----
+Used for multi-channel routing (Phase 5+). Currently each binary run
+uses a single gateway selected by `--gateway` flag.
 
-## 6. Delivery Routing
-
-Talon supports multiple simultaneous delivery targets per message:
-
-```rust
-pub enum DeliverTarget {
-    Origin,                              // back to sender
-    Local,                               // save to file, no delivery
-    All,                                 // all connected home channels
-    Specific { platform: String, chat_id: String, thread_id: Option<String> },
-}
-
-pub struct GatewayRouter {
-    gateways: HashMap<String, Arc<dyn Gateway>>,
-}
-
-impl GatewayRouter {
-    pub async fn deliver_to(
-        &self,
-        target: &DeliverTarget,
-        origin: &AgentInput,
-        event: DeliveryEvent,
-    ) -> Result<(), GatewayError> {
-        match target {
-            DeliverTarget::Origin => {
-                let gw = self.gateways.get(&origin.platform)
-                    .ok_or(GatewayError::UnknownPlatform(origin.platform.clone()))?;
-                gw.deliver(&event).await?;
-            }
-            DeliverTarget::All => {
-                let futures: Vec<_> = self.gateways.values()
-                    .map(|gw| gw.deliver(&event))
-                    .collect();
-                futures::future::join_all(futures).await;
-            }
-            DeliverTarget::Specific { platform, chat_id, thread_id } => {
-                let gw = self.gateways.get(platform)
-                    .ok_or(GatewayError::UnknownPlatform(platform.clone()))?;
-                gw.deliver(&event).await?;
-            }
-            DeliverTarget::Local => {
-                // Write to ~/.talon/data/cron/output/<timestamp>.md
-                self.save_locally(&event).await?;
-            }
-        }
-        Ok(())
-    }
-}
-```
 ---
 
 ## Related Documents
 
-### Depends On
-- [Cargo Workspace Design](12_Workspace_And_Crate_Structure.md)
-
-### Used By
-- [Telegram Integration](../05_API_Bindings/45_Telegram_Integration.md)
-- [Discord Integration](../05_API_Bindings/46_Discord_Integration.md)
-- [Send Message Tool](../04_Core_Features/35a_Send_Message_Tool.md)
-
-### See Also
-- [Messaging Platform Gateway](../05_API_Bindings/44a_Messaging_Platform_Gateway.md)
-- [Streaming SSE Parser](../05_API_Bindings/44_Streaming_SSE_Parser.md)
-- [Config System](18a_Config_System.md)
+- [Workspace & Crate Structure](12_Workspace_And_Crate_Structure.md)
 - [Approval Membrane](17a_Approval_Membrane.md)
-
+- [Config System](18a_Config_System.md)
+- [LLM Provider Architecture](../04_Core_Features/LLM_Providers.md) ← new
