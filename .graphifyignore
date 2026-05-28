@@ -1,5 +1,8 @@
 # Exclude audit history — dogfood output inflates god-node analysis
 dogfood-output/
 
+# Exclude archived research docs — dead weight in the graph
+docs/archive/
+
 # Exclude graphify's own output
 graphify-out/

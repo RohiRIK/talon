@@ -89,7 +89,7 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn schema(&self) -> Value;                         // schemars::schema_for! output
-    fn approval_level(&self) -> ApprovalLevel;
+    fn approval_level(&self, args: &serde_json::Value) -> ApprovalLevel;
     async fn execute(
         &self,
         ctx: &ToolContext,

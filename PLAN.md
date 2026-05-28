@@ -657,6 +657,32 @@ cargo run --release -- --message "what do you know about my preferences?"
 
 ---
 
+## Graphify Health — Action Items (from graph analysis, 2026-05-28)
+
+> Generated from graphify graph analysis (3,806 nodes, 3,937 edges, 264 communities).
+
+### 🔴 ~~Critical: Test Coverage Gaps~~ — RESOLVED (false alarm)
+
+> Initial grep only matched `#[test]`, missing `#[tokio::test]`. Actual counts: agent.rs=8, context.rs=6, dispatcher.rs=10, sqlite_store.rs=5, store.rs=3. Total: 190 tests across 22 files.
+
+- [x] GH.1 ~~Write tests for `agent.rs`~~ — already has 8 tests (tokio::test)
+- [x] GH.2 ~~Expand tests for `context.rs`~~ — already has 6 tests
+- [x] GH.3 ~~Expand tests for `dispatcher.rs`~~ — already has 10 tests
+- [x] GH.4 ~~Add tests for `sqlite_store.rs` and `store.rs`~~ — already have 5 and 3 tests
+
+### 🟡 Architecture Cleanup
+
+- [x] GH.5 Unify 3 conflicting `ApprovalLevel` enum definitions across spec docs — only `crates/talon-core/src/approval.rs` is canonical
+- [x] GH.6 Fix remaining `Arc<Box<dyn Tool>>` references in docs — canonical form is `Arc<dyn Tool>` (Type #5) — verified: all occurrences are already corrective/reference context, no live misuse
+- [x] GH.7 Archive dead research docs (Redis/Iris, competitive analysis) to `docs/archive/` — moved: 09_Redis_Iris (8 docs), 4 orphan feature audits, 2 orphan migration docs, dogfood-output (9 audit reports)
+
+### 🟢 Maintenance
+
+- [x] GH.8 Re-run `graphify update .` after archiving docs — nodes 3,806→2,879 (−24%), edges 3,937→3,045 (−23%), communities 264→213 (−19%)
+- [x] GH.9 Cross-reference god nodes with test coverage — `open_db()` / `Database::open` is well-tested (15+ test functions across lib.rs, context.rs, sqlite_store.rs, integration.rs, agent.rs)
+
+---
+
 ## Final Acceptance Criteria
 
 - [ ] `talon init` completes in <5s, creates `~/.talon/` with valid config

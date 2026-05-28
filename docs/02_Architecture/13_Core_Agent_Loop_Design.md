@@ -172,10 +172,9 @@ pub async fn dispatch_tool_calls(
 // Canonical approval levels — see talon-core/src/tools/mod.rs
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ApprovalLevel {
-    Safe,          // Always execute
-    Confirmation,  // Ask once, remember answer
-    Required,      // Always ask, no memory
-    Blocked,       // Never execute
+    Safe,
+    NeedsApproval,
+    Dangerous,
 }
 
 pub enum ToolRisk {

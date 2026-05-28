@@ -44,14 +44,9 @@ pub struct ApprovalMembrane {
 
 #[derive(Debug, Clone)]
 pub enum ApprovalLevel {
-    /// No confirmation needed — safe read-only operations
     Safe,
-    /// Ask once per session, then remember
-    Confirmation,
-    /// Always ask before executing
-    Required,
-    /// Never allow — hard block
-    Blocked,
+    NeedsApproval,
+    Dangerous,
 }
 
 pub enum ToolRisk {
@@ -78,8 +73,7 @@ impl ApprovalMembrane {
         match (level, risk) {
             (ApprovalLevel::Safe, _) => ApprovalDecision::Approved,
             (_, ToolRisk::ReadOnly) => ApprovalDecision::Approved,
-            (ApprovalLevel::Blocked, _) => ApprovalDecision::Denied("tool disabled".into()),
-            (ApprovalLevel::Confirmation, _) => {
+            (ApprovalLevel::NeedsApproval, _) => {
                 if self.session_approvals.contains(&call.name) {
                     ApprovalDecision::Approved
                 } else {
@@ -88,7 +82,7 @@ impl ApprovalMembrane {
                     ))
                 }
             }
-            (ApprovalLevel::Required, risk) if risk >= ToolRisk::Destructive => {
+            (ApprovalLevel::Dangerous, risk) if risk >= ToolRisk::Destructive => {
                 ApprovalDecision::NeedUserApproval(format!(
                     "Allow `{}` with args:\n```json\n{}\n```",
                     call.name,

@@ -57,7 +57,7 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn schema(&self) -> serde_json::Value;         // JSON Schema for args
-    fn approval_level(&self) -> ApprovalLevel {    // default: Safe
+    fn approval_level(&self, args: &serde_json::Value) -> ApprovalLevel {    // default: Safe
         ApprovalLevel::Safe
     }
 
@@ -92,10 +92,9 @@ impl ToolResult {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ApprovalLevel {
-    Safe,          // Always execute
-    Confirmation,  // Ask once, remember answer
-    Required,      // Always ask, no memory
-    Blocked,       // Never execute
+    Safe,
+    NeedsApproval,
+    Dangerous,
 }
 ```
 
@@ -163,7 +162,7 @@ impl ToolExecutor {
         }
 
         // 3. Approval check
-        if tool.approval_level() >= ApprovalLevel::Confirmation {
+        if tool.approval_level(args) >= ApprovalLevel::NeedsApproval {
             match self.approval_service.request_approval(call, ctx).await {
                 Ok(ApprovalDecision::Approved) => {}
                 Ok(ApprovalDecision::Denied) => {
@@ -217,7 +216,7 @@ pub async fn execute_parallel(
     // Separate by risk: safe → parallel, others → sequential
     let (safe, gated): (Vec<_>, Vec<_>) = calls.into_iter().partition(|c| {
         self.registry.get(&c.name)
-            .map(|t| t.approval_level() == ApprovalLevel::Safe)
+            .map(|t| t.approval_level(args) == ApprovalLevel::Safe)
             .unwrap_or(false)
     });
 

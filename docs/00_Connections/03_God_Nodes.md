@@ -9,7 +9,7 @@
 ## Top 10 God Nodes (by edge count)
 
 ### 1. `Issues Found` — 15 edges
-- **Source:** `dogfood-output/agent8_internal_consistency.md`
+- **Source:** `archive/dogfood-output/agent8_internal_consistency.md`
 - **Community:** 4 (cohesion 0.07 — large cross-cutting audit cluster)
 - **Edge count:** 15 (highest in graph)
 - **What it is:** The audit node that collected all cross-file type inconsistencies during dogfood pass 4
@@ -21,7 +21,7 @@
 ---
 
 ### 2 & 3. `Missing Coverage` — 12 edges each (two instances)
-- **Source:** `dogfood-output/agent1_hermes_repo.md` and `dogfood-output/agent5_openclaw.md`
+- **Source:** `archive/dogfood-output/agent1_hermes_repo.md` and `archive/dogfood-output/agent5_openclaw.md`
 - **Community:** 9 (Hermes audit) and 10 (OpenClaw audit)
 - **What they are:** The audit nodes capturing features present in the source repos but absent from our docs
 - **Why they matter architecturally:** The two `Missing Coverage` nodes with 12 edges each identify the most under-documented areas:
@@ -55,7 +55,7 @@
 ---
 
 ### 6. `Top 10 Critical Inaccuracies` — 11 edges
-- **Source:** `dogfood-output/MASTER_REPORT.md`
+- **Source:** `archive/dogfood-output/MASTER_REPORT.md`
 - **Community:** 3 (audit findings cluster)
 - **Why it matters:** 11 edges means 11 docs were found to have critical inaccuracies during dogfood audit. These were corrected in passes 2–4 (final score 4.9/5).
 - **The most impactful corrections captured by this node:**
@@ -69,7 +69,7 @@
 ---
 
 ### 7. `Top 10 Missing Coverage Gaps` — 11 edges
-- **Source:** `dogfood-output/MASTER_REPORT.md`
+- **Source:** `archive/dogfood-output/MASTER_REPORT.md`
 - **Community:** 3
 - **What it identifies:** The 10 biggest gaps between what the source repos do and what our docs cover.
 - **Top gaps (by implementation priority):**

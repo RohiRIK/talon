@@ -44,14 +44,9 @@ pub enum ToolRisk {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ApprovalLevel {
-    /// No confirmation needed — safe read-only operations
     Safe,
-    /// Ask once per session, then remember
-    Confirmation,
-    /// Always ask before executing
-    Required,
-    /// Never allow — hard block
-    Blocked,
+    NeedsApproval,
+    Dangerous,
 }
 
 impl Default for ApprovalLevel {
@@ -141,13 +136,13 @@ impl ApprovalMembrane {
             ApprovalLevel::Safe if !must_ask => {
                 return Ok(());
             }
-            ApprovalLevel::Confirmation if !must_ask => {
+            ApprovalLevel::NeedsApproval if !must_ask => {
                 if risk < ToolRisk::Destructive {
                     return Ok(()); // auto-approve safe tools
                 }
                 self.ask_user(tool_name, risk, args).await?
             }
-            ApprovalLevel::Blocked => {
+            ApprovalLevel::Dangerous => {
                 return Err(ApprovalError::HardBlocked(tool_name.to_string()));
             }
             _ => {

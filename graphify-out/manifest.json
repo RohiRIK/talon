@@ -1,82 +1,192 @@
 {
+  "/home/rohi/homelab/projects/talon/install.sh": {
+    "mtime": 1779903822.5390394,
+    "ast_hash": "a5841507bbfb0d43f296c6990ffcbdc4",
+    "semantic_hash": ""
+  },
   "/home/rohi/homelab/projects/talon/init_docs.sh": {
     "mtime": 1779735226.6288984,
     "ast_hash": "a7f700f24175cd2eba961060b61161c3",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/agent7_pai.md": {
-    "mtime": 1779731550.0822022,
-    "ast_hash": "549779d3d04fcd1a2bafca12eb2dd84e",
+  "/home/rohi/homelab/projects/talon/talon/src/main.rs": {
+    "mtime": 1779903822.5393577,
+    "ast_hash": "ba2ce86002087f798724560259e210d0",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/AUDIT_PASS4_FINAL_REPORT.md": {
-    "mtime": 1779734666.0320356,
-    "ast_hash": "a729123bd547a7ba4a96751514e74ed5",
+  "/home/rohi/homelab/projects/talon/crates/talon-memory/src/files.rs": {
+    "mtime": 1779903822.5383549,
+    "ast_hash": "f240e39fdffe562934b15f2c03338ebe",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/agent3_self_evolution.md": {
-    "mtime": 1779731290.278234,
-    "ast_hash": "ded29ad630356da60bf426f814401597",
+  "/home/rohi/homelab/projects/talon/crates/talon-memory/src/migrations.rs": {
+    "mtime": 1779903822.5383549,
+    "ast_hash": "64b99feb54a598f1696ded89170576d0",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/agent4_openclaw_repo.md": {
-    "mtime": 1779731427.5958595,
-    "ast_hash": "a94cda300948d19302a8f7ffb6982c43",
+  "/home/rohi/homelab/projects/talon/crates/talon-memory/src/error.rs": {
+    "mtime": 1779903822.5383549,
+    "ast_hash": "d20104c6a044e9fe7d1e60f88d763f2f",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/agent6_ohmy.md": {
-    "mtime": 1779731407.5574765,
-    "ast_hash": "e480f82cd7a185418ec0a780a1ad6f1f",
+  "/home/rohi/homelab/projects/talon/crates/talon-memory/src/lib.rs": {
+    "mtime": 1779903822.5383549,
+    "ast_hash": "63de087145a933912a9ed9ce9552eb30",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/agent2_hermes_docs.md": {
-    "mtime": 1779731308.000573,
-    "ast_hash": "7c1cf714635b6da7251590c87219fbd8",
+  "/home/rohi/homelab/projects/talon/crates/talon-memory/src/schema.sql": {
+    "mtime": 1779903822.5383549,
+    "ast_hash": "d96530a10a48da4fb6a499a8bed39e8d",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/AUDIT_PASS3_RUST_CONSISTENCY.md": {
-    "mtime": 1779733145.8953578,
-    "ast_hash": "71b567862b3bc90f5466d823eaf931d1",
+  "/home/rohi/homelab/projects/talon/crates/talon-memory/src/store.rs": {
+    "mtime": 1779903822.5383549,
+    "ast_hash": "3bd803ef5b1b2a41f4bc48c4652663be",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/AUDIT_PASS2_REPORT.md": {
-    "mtime": 1779732472.6895914,
-    "ast_hash": "ae20fc837a118c4570d891fb90b8ee49",
+  "/home/rohi/homelab/projects/talon/crates/talon-memory/src/context.rs": {
+    "mtime": 1779903822.5382392,
+    "ast_hash": "455e531aa75350f32c95a380cb7a434d",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/AUDIT_PASS3_REPORT.md": {
-    "mtime": 1779733215.0116107,
-    "ast_hash": "957268d450aa1337482ac72c9edb51a5",
+  "/home/rohi/homelab/projects/talon/crates/talon-memory/src/sqlite_store.rs": {
+    "mtime": 1779903822.5383549,
+    "ast_hash": "5fd3f448a11f6c107fac3fc71cfda412",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/MASTER_REPORT.md": {
-    "mtime": 1779731579.3477619,
-    "ast_hash": "9e21a354c7068db559f076c149cce22c",
+  "/home/rohi/homelab/projects/talon/crates/talon-memory/tests/integration.rs": {
+    "mtime": 1779903822.5383549,
+    "ast_hash": "9612c41e44d8f810ed519c8fa5a732ba",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/agent1_hermes_repo.md": {
-    "mtime": 1779731328.6489675,
-    "ast_hash": "3b23e0b7d1ae3e891d90e2c5bba5fd01",
+  "/home/rohi/homelab/projects/talon/crates/talon-gateway/src/lib.rs": {
+    "mtime": 1779903822.5376318,
+    "ast_hash": "d43fab97663f564b97f8fb8929f855aa",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/agent5_openclaw_site.md": {
-    "mtime": 1779731448.4592586,
-    "ast_hash": "5f2d646c1e69bc43577eee8340dbcc05",
+  "/home/rohi/homelab/projects/talon/crates/talon-core/src/events.rs": {
+    "mtime": 1779903822.537184,
+    "ast_hash": "90ce8cebfc40f6d5a46fa082c62f40b4",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/agent8_internal_consistency.md": {
-    "mtime": 1779731591.5279949,
-    "ast_hash": "f39983b2fa375f1dc0df3a16f1a5eeaa",
+  "/home/rohi/homelab/projects/talon/crates/talon-core/src/error.rs": {
+    "mtime": 1779903822.537184,
+    "ast_hash": "73231fb4f6e92631c048bb9ed5aa8996",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/dogfood-output/AUDIT_PASS2_RUST_CONSISTENCY.md": {
-    "mtime": 1779732401.964433,
-    "ast_hash": "83606b11cc8349b0368074e69d343743",
+  "/home/rohi/homelab/projects/talon/crates/talon-core/src/lib.rs": {
+    "mtime": 1779903822.537184,
+    "ast_hash": "ebac5b0befe32c54b0e49df2c4e3dd0a",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-core/src/state.rs": {
+    "mtime": 1779903822.537184,
+    "ast_hash": "a768e2c30746b3218b5286ef811c7365",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-core/src/agent.rs": {
+    "mtime": 1779903822.5370557,
+    "ast_hash": "2896dd8b98c23f64350841a959786c60",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-core/src/approval.rs": {
+    "mtime": 1779903822.537184,
+    "ast_hash": "5077bd5ab7f0b4feae4a8c30e5e3539c",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-core/src/tools/dispatcher.rs": {
+    "mtime": 1779903822.537184,
+    "ast_hash": "5e622858d4a8c0df698cb85a34ec59f9",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-core/src/tools/mod.rs": {
+    "mtime": 1779903822.5375051,
+    "ast_hash": "7fa4b6334b1b2ab0621568c5d3b13805",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-llm/src/openai.rs": {
+    "mtime": 1779903822.5378716,
+    "ast_hash": "0e709b7499626b0b033383ee2f71b1c4",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-llm/src/mock.rs": {
+    "mtime": 1779903822.5378716,
+    "ast_hash": "2a2f7d8d9ae9a3cb272b9e64cce6be40",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-llm/src/lib.rs": {
+    "mtime": 1779903822.5378716,
+    "ast_hash": "9ba49be6cc4e6c58fb115cf7fe0782db",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-llm/src/github_copilot.rs": {
+    "mtime": 1779903822.5378716,
+    "ast_hash": "7f87065709c96f7222efa05226d7e776",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-llm/src/openai_compat.rs": {
+    "mtime": 1779903822.5378716,
+    "ast_hash": "567b1597d689b5afed8b4ba773ec832a",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-llm/src/anthropic.rs": {
+    "mtime": 1779903822.5377476,
+    "ast_hash": "0a40683c505a8552c00a94bb8d7f8b00",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-plugins/src/lib.rs": {
+    "mtime": 1779903822.5388122,
+    "ast_hash": "047cc0cad5dce7eafacd7537f038b3fa",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-tools/src/session_search.rs": {
+    "mtime": 1779903822.5388994,
+    "ast_hash": "6c6d2555c8215f152097d1349c707e0a",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/crates/talon-tools/src/lib.rs": {
+    "mtime": 1779903822.538878,
+    "ast_hash": "3567d85082fd82ee47139f6f5c785745",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/CONTRIBUTING.md": {
+    "mtime": 1779903822.5348058,
+    "ast_hash": "0125a59beacecf5750eea6a2577c4de8",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/lefthook.yml": {
+    "mtime": 1779903822.5390394,
+    "ast_hash": "ecd88ef0125b2c4acb4da53353d0ce9f",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/PLAN.md": {
+    "mtime": 1779947551.8310924,
+    "ast_hash": "66f53082954fbc8409b208734c3c2f08",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/CHANGELOG.md": {
+    "mtime": 1779872507.9319103,
+    "ast_hash": "581f822cb99ca7698c5ac04479f4dce4",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/README.md": {
+    "mtime": 1779903822.5351787,
+    "ast_hash": "b812f3b301b7ef0e3822b8b5212b0749",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/CLAUDE.md": {
+    "mtime": 1779885680.2341547,
+    "ast_hash": "35c2e153d7fa396ba468f67b9c524b49",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/roadmap.md": {
+    "mtime": 1779885680.2351549,
+    "ast_hash": "210b5875d2501d5e1eb3b8432cce6e9d",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/00_Master_Index.md": {
-    "mtime": 1779826128.6762135,
-    "ast_hash": "46313db3d6580032946c467eaaaebd79",
+    "mtime": 1779948422.3416913,
+    "ast_hash": "b05115a52f5136117848bd9d4af751e4",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/01_Analysis/10_Strategic_Recommendations.md": {
@@ -99,34 +209,34 @@
     "ast_hash": "1a529e454bf96d3ba8948b667026031d",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/docs/01_Analysis/02_OpenClaw_Feature_Audit.md": {
-    "mtime": 1779740517.7543254,
-    "ast_hash": "482c92f49ca973ab9bb862d403daa633",
-    "semantic_hash": ""
-  },
   "/home/rohi/homelab/projects/talon/docs/01_Analysis/07_TypeScript_Pain_Points.md": {
     "mtime": 1779740518.9762194,
     "ast_hash": "5be76adfe49ddc7a4206751cb49d1afb",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/docs/01_Analysis/03_Hermes_Agent_Feature_Audit.md": {
-    "mtime": 1779740518.0852547,
-    "ast_hash": "dbab5db84cfa52cba794583a34b38840",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/01_Analysis/05_Personal_AI_Infra_Feature_Audit.md": {
-    "mtime": 1779740518.635134,
-    "ast_hash": "537ab5c4bbac7e65163b741a7260e2e2",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/01_Analysis/04_OhMyClaudeCode_Feature_Audit.md": {
-    "mtime": 1779739740.884081,
-    "ast_hash": "e102236f750e4981aedf42e1ce254564",
-    "semantic_hash": ""
-  },
   "/home/rohi/homelab/projects/talon/docs/01_Analysis/09_Rust_Migration_Tradeoffs.md": {
     "mtime": 1779740519.2091196,
     "ast_hash": "91e8f4fc2fd61bd1978269b1ee19d882",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/10_TUI/79_Terminal_Rendering_Capabilities.md": {
+    "mtime": 1779872507.932718,
+    "ast_hash": "f70ce298e58dbb2d61d3f02aefee77d8",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/10_TUI/77_TUI_Landscape_Overview.md": {
+    "mtime": 1779872507.9319103,
+    "ast_hash": "9fdb637894261c02747323b2ba5e581a",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/10_TUI/78_TUI_Technology_Selection.md": {
+    "mtime": 1779872507.932718,
+    "ast_hash": "f3484377f07d584b7e2ec575c35d6350",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/07_Memory_System/59a_Embedding_Based_Retrieval.md": {
+    "mtime": 1779740549.0613477,
+    "ast_hash": "baaf08bf03a7434f3a5e2b072d4f6b2c",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/07_Memory_System/59_Embedding_Retrieval.md": {
@@ -149,9 +259,24 @@
     "ast_hash": "30ef2b565306bd6003b11ac60e75c028",
     "semantic_hash": ""
   },
+  "/home/rohi/homelab/projects/talon/docs/07_Memory_System/56a_Cross_Session_Context.md": {
+    "mtime": 1779739740.886983,
+    "ast_hash": "37e1e802bf4595f2bc8f05510515be26",
+    "semantic_hash": ""
+  },
   "/home/rohi/homelab/projects/talon/docs/07_Memory_System/55_SQLite_FTS5_In_Rust.md": {
     "mtime": 1779740545.90252,
     "ast_hash": "712dc8ac5dc0931c001fb4239252f527",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/07_Memory_System/57a_Skill_File_Management.md": {
+    "mtime": 1779739740.8870523,
+    "ast_hash": "bc57819b74a2a0efe170e2d1d647dbe8",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/07_Memory_System/58a_User_Modeling.md": {
+    "mtime": 1779739740.8871212,
+    "ast_hash": "09fd053b7e3ad8fbb814199cd479aa66",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/04_Core_Features/35_Memory_System_SQLite_FTS5.md": {
@@ -170,8 +295,13 @@
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/04_Core_Features/36_MCP_Client_Tool.md": {
-    "mtime": 1779739740.8860195,
-    "ast_hash": "11a5c32268be4f87286a2c53255904a0",
+    "mtime": 1779947256.0614386,
+    "ast_hash": "d03c95acdcdf2ce1d219f9652d0a6400",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/34a_Skill_System.md": {
+    "mtime": 1779739740.8858652,
+    "ast_hash": "3cf9dc6679a5dea18633c157459eb5c2",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/04_Core_Features/31_File_System_Tool.md": {
@@ -180,8 +310,13 @@
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/04_Core_Features/32_Browser_Tool.md": {
-    "mtime": 1779739740.8857975,
-    "ast_hash": "3aa216a7cadecd6806b23f800b9d18f0",
+    "mtime": 1779947236.4230583,
+    "ast_hash": "4f10b5865fc2edcb40df2f439c6b32e6",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/32a_Session_And_Conversation_Management.md": {
+    "mtime": 1779739740.8857596,
+    "ast_hash": "af98c67dbc206ea751de4f5a646c0767",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/04_Core_Features/38_Batch_Trajectory_Generation.md": {
@@ -189,9 +324,19 @@
     "ast_hash": "5ec6c287bc4a87cd331818d791681c2e",
     "semantic_hash": ""
   },
+  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/30a_Terminal_Tool.md": {
+    "mtime": 1779739740.885584,
+    "ast_hash": "d808237766eaa57eb3d79d21273eca6e",
+    "semantic_hash": ""
+  },
   "/home/rohi/homelab/projects/talon/docs/04_Core_Features/39_Self_Evolution_Loop.md": {
     "mtime": 1779739740.8862104,
     "ast_hash": "c33860d38902dc7cacef22fe0806d315",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/37a_Voice_Mode.md": {
+    "mtime": 1779739740.88609,
+    "ast_hash": "60831f6fe8fe976deadd8d6ade54ff99",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/04_Core_Features/33_Cron_Scheduler.md": {
@@ -200,8 +345,8 @@
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/04_Core_Features/34_Web_Search_Tool.md": {
-    "mtime": 1779740533.932664,
-    "ast_hash": "e58a3502a719eca0cbcfdb4d0523d049",
+    "mtime": 1779947241.217151,
+    "ast_hash": "99c50d5d65442dc4fa8b29b96de1e825",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/04_Core_Features/29_Agent_Loop_Implementation.md": {
@@ -209,9 +354,14 @@
     "ast_hash": "a3bf6334deb54789ac3481ff2a995b62",
     "semantic_hash": ""
   },
+  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/35a_Send_Message_Tool.md": {
+    "mtime": 1779947204.2884364,
+    "ast_hash": "1828ed5a24352eaaf2e4794b2281b36f",
+    "semantic_hash": ""
+  },
   "/home/rohi/homelab/projects/talon/docs/04_Core_Features/30_Tool_Execution_Engine.md": {
-    "mtime": 1779740530.2247972,
-    "ast_hash": "b64f3ea65ba7e6fb2e150a9b3eb5808e",
+    "mtime": 1779947203.7244253,
+    "ast_hash": "2b772416309633dd859c2ddfaf3bf235",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/04_Core_Features/37_Subagent_Delegation.md": {
@@ -219,14 +369,24 @@
     "ast_hash": "dbad0137c34032a8d1b529d68b54e442",
     "semantic_hash": ""
   },
+  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/31a_Streaming_And_Realtime_Output.md": {
+    "mtime": 1779739740.8856735,
+    "ast_hash": "ec574b762e69da651d405f3adc3f050a",
+    "semantic_hash": ""
+  },
   "/home/rohi/homelab/projects/talon/docs/02_Architecture/20_Security_Model.md": {
-    "mtime": 1779739740.885125,
-    "ast_hash": "8a90eb727d375bb614b25c8bccee55e1",
+    "mtime": 1779947218.388709,
+    "ast_hash": "37c00e8c207e929b36eb706be83cda06",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/02_Architecture/13_Core_Agent_Loop_Design.md": {
-    "mtime": 1779740520.087529,
-    "ast_hash": "c9e57bebc714cdaecc75fe117681974c",
+    "mtime": 1779947203.9184291,
+    "ast_hash": "778d0f991263441d2ff5959c05ee3321",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/02_Architecture/18a_Config_System.md": {
+    "mtime": 1779947259.5175054,
+    "ast_hash": "07af0405a6fa2fa5bc8a5d9004e6c07b",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/02_Architecture/18_Gateway_MultiChannel_Architecture.md": {
@@ -249,6 +409,11 @@
     "ast_hash": "64506a28af19eab827f2b91da94ecf3e",
     "semantic_hash": ""
   },
+  "/home/rohi/homelab/projects/talon/docs/02_Architecture/17a_Approval_Membrane.md": {
+    "mtime": 1779947231.4819627,
+    "ast_hash": "62ee18261ff5ab70b53380de8adae69b",
+    "semantic_hash": ""
+  },
   "/home/rohi/homelab/projects/talon/docs/02_Architecture/14_State_Machine_And_Lifecycle.md": {
     "mtime": 1779739740.8846972,
     "ast_hash": "8cb27dfd9198daee3f0dd5a239e2d16f",
@@ -260,13 +425,18 @@
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/02_Architecture/16_Tool_System_Architecture.md": {
-    "mtime": 1779740521.2513294,
-    "ast_hash": "cff732fbb95ccb3dab1f976fc914248f",
+    "mtime": 1779947204.0864325,
+    "ast_hash": "952548a3151f7ed6a7c2eb99f874a579",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/02_Architecture/11_System_Architecture_Overview.md": {
     "mtime": 1779823495.7686064,
     "ast_hash": "cc68f6f7882c3605ae15a913392de751",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/05_API_Bindings/42a_OpenAI_Compatible_Client.md": {
+    "mtime": 1779739740.8863192,
+    "ast_hash": "f45362339c4847ab8f515b8f3ad58e08",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/05_API_Bindings/45_Telegram_Integration.md": {
@@ -304,9 +474,24 @@
     "ast_hash": "a6ae508016537d14cdbf97818308c7b3",
     "semantic_hash": ""
   },
+  "/home/rohi/homelab/projects/talon/docs/05_API_Bindings/43a_Anthropic_API_Integration.md": {
+    "mtime": 1779739740.886386,
+    "ast_hash": "155447a754143fd3f0c05f9da6e95a7f",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/05_API_Bindings/44a_Messaging_Platform_Gateway.md": {
+    "mtime": 1779740540.9932292,
+    "ast_hash": "a7c1a6412cef0ab743b4496c2916d6d4",
+    "semantic_hash": ""
+  },
   "/home/rohi/homelab/projects/talon/docs/05_API_Bindings/48_ACP_Protocol_Integration.md": {
     "mtime": 1779740542.978172,
     "ast_hash": "662f44833f3b2dfcda7db1df0399911c",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/05_API_Bindings/45a_Ollama_Local_Provider.md": {
+    "mtime": 1779740542.0894241,
+    "ast_hash": "c1fb2cee07d7ddf856b6411b72c7e7b6",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/08_DevOps/61_Docker_And_Container_Deployment.md": {
@@ -329,6 +514,11 @@
     "ast_hash": "b03bc76f7a2b7ca954602196c98258c7",
     "semantic_hash": ""
   },
+  "/home/rohi/homelab/projects/talon/docs/08_DevOps/60a_Docker_Build.md": {
+    "mtime": 1779739740.8872595,
+    "ast_hash": "7a28e240d295a1509368d8d181991162",
+    "semantic_hash": ""
+  },
   "/home/rohi/homelab/projects/talon/docs/08_DevOps/62_CI_CD_Pipeline.md": {
     "mtime": 1779739740.887384,
     "ast_hash": "a6926fa5e92eedd18158327566f903e0",
@@ -337,6 +527,86 @@
   "/home/rohi/homelab/projects/talon/docs/08_DevOps/60_Build_System_Cargo_Workspace.md": {
     "mtime": 1779823495.7686064,
     "ast_hash": "7ccfa4e56540e20dce8eabc7fc8b7d9f",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/08_DevOps/61a_CI_CD_Pipeline.md": {
+    "mtime": 1779740551.3403342,
+    "ast_hash": "ae752b09657b6ab5e82073e86d1b0b07",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/00_Connections/03_God_Nodes.md": {
+    "mtime": 1779948412.9785109,
+    "ast_hash": "29bb05ad8f18dd54eb602e521a2e4d37",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/00_Connections/02_Dependency_Order.md": {
+    "mtime": 1779737246.3379765,
+    "ast_hash": "a75dd6590f0e6a9f3c1c10d6d2da8e2b",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/00_Connections/01_Concept_Clusters.md": {
+    "mtime": 1779737188.962791,
+    "ast_hash": "63892ca2f62a3130ab10b605ec7e5547",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/00_Connections/00_Cross_Reference_Map.md": {
+    "mtime": 1779737128.6785316,
+    "ast_hash": "2af8ecdc77c1d31341824a82ea1c4d25",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/00_Connections/06_Phase_Build_Guide.md": {
+    "mtime": 1779823495.7686064,
+    "ast_hash": "de522f221081245a88e6693e070cd016",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/00_Connections/07_Graphify_Spec.md": {
+    "mtime": 1779770456.6397493,
+    "ast_hash": "34ab4f628c7eb947acc8520ca1c68593",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/00_Connections/05_Canonical_Types.md": {
+    "mtime": 1779947263.2555778,
+    "ast_hash": "8a41b654a9ff4631d0b0492562cd6da8",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/00_Connections/04_Gap_Analysis.md": {
+    "mtime": 1779737420.553513,
+    "ast_hash": "fcc7516f9bc41156c83fe1bcd350d8ba",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/ADR/0003-no-async-trait.md": {
+    "mtime": 1779903822.5390394,
+    "ast_hash": "398087e90b9362e404a61910e1a572bf",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/ADR/0004-rusqlite-spawn-blocking.md": {
+    "mtime": 1779903822.5390394,
+    "ast_hash": "744825a37aadc58b079ea091495c0bc2",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/ADR/0001-edition-2024.md": {
+    "mtime": 1779903822.5388994,
+    "ast_hash": "a15e59d58c5881b5f81fedc5876ff6d7",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/ADR/0006-semver-release-pipeline.md": {
+    "mtime": 1779903822.5390394,
+    "ast_hash": "4d106739add03bad1cc904e0754df99d",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/ADR/0007-prototype-learnings.md": {
+    "mtime": 1779903822.5390394,
+    "ast_hash": "27ea036e08575cec1eb9db0603a85772",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/ADR/0005-lancedb-memory-backend.md": {
+    "mtime": 1779903822.5390394,
+    "ast_hash": "3f4afb0fbef7a5252069b13f57b7a4a0",
+    "semantic_hash": ""
+  },
+  "/home/rohi/homelab/projects/talon/docs/ADR/0002-thiserror-vs-anyhow.md": {
+    "mtime": 1779903822.5390394,
+    "ast_hash": "1613991c7f65d8ff63bd4573261890a5",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/03_Migration_Strategy/28_Risk_Register.md": {
@@ -355,13 +625,8 @@
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/03_Migration_Strategy/26_Test_Strategy.md": {
-    "mtime": 1779740527.557574,
-    "ast_hash": "2602de87af76b7ba4ce3292fc21fed11",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/03_Migration_Strategy/27_Incremental_Migration_Approach.md": {
-    "mtime": 1779740527.9233801,
-    "ast_hash": "e2c2d5d356418e706006a3e89e815151",
+    "mtime": 1779947267.2236545,
+    "ast_hash": "9d95ac625f5139899af5eb0822d3f193",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/03_Migration_Strategy/21_Migration_Roadmap.md": {
@@ -374,9 +639,9 @@
     "ast_hash": "ee5d782b834dcb7306fa337ffce8488f",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/docs/03_Migration_Strategy/25_Data_Model_Migration.md": {
-    "mtime": 1779740527.1215975,
-    "ast_hash": "c69d261e6b6f74745af705b1b8a1ea19",
+  "/home/rohi/homelab/projects/talon/docs/06_Concurrency/51a_Parallel_Subagent_Spawning.md": {
+    "mtime": 1779740543.9615157,
+    "ast_hash": "187fe69dd56ed48ed5b87c5e6cc431b6",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/docs/06_Concurrency/50_Async_Tool_Execution.md": {
@@ -404,159 +669,14 @@
     "ast_hash": "000ab8c3fc99c5598e5deda47d838b27",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/docs/06_Concurrency/51_Channel_Patterns.md": {
-    "mtime": 1779739740.8868082,
-    "ast_hash": "03f54bc278f4995df580757784534ae4",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/07_Memory_System/59a_Embedding_Based_Retrieval.md": {
-    "mtime": 1779740549.0613477,
-    "ast_hash": "baaf08bf03a7434f3a5e2b072d4f6b2c",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/07_Memory_System/56a_Cross_Session_Context.md": {
-    "mtime": 1779739740.886983,
-    "ast_hash": "37e1e802bf4595f2bc8f05510515be26",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/07_Memory_System/57a_Skill_File_Management.md": {
-    "mtime": 1779739740.8870523,
-    "ast_hash": "bc57819b74a2a0efe170e2d1d647dbe8",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/07_Memory_System/58a_User_Modeling.md": {
-    "mtime": 1779739740.8871212,
-    "ast_hash": "09fd053b7e3ad8fbb814199cd479aa66",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/34a_Skill_System.md": {
-    "mtime": 1779739740.8858652,
-    "ast_hash": "3cf9dc6679a5dea18633c157459eb5c2",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/32a_Session_And_Conversation_Management.md": {
-    "mtime": 1779739740.8857596,
-    "ast_hash": "af98c67dbc206ea751de4f5a646c0767",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/30a_Terminal_Tool.md": {
-    "mtime": 1779739740.885584,
-    "ast_hash": "d808237766eaa57eb3d79d21273eca6e",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/37a_Voice_Mode.md": {
-    "mtime": 1779739740.88609,
-    "ast_hash": "60831f6fe8fe976deadd8d6ade54ff99",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/35a_Send_Message_Tool.md": {
-    "mtime": 1779739740.8859448,
-    "ast_hash": "640e820c928d967af0f1a84d76f94085",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/04_Core_Features/31a_Streaming_And_Realtime_Output.md": {
-    "mtime": 1779739740.8856735,
-    "ast_hash": "ec574b762e69da651d405f3adc3f050a",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/02_Architecture/18a_Config_System.md": {
-    "mtime": 1779739740.884966,
-    "ast_hash": "c62a38d55e1d2f8ba0c2829c92772d54",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/02_Architecture/17a_Approval_Membrane.md": {
-    "mtime": 1779740521.9786294,
-    "ast_hash": "96026ee1fcf869606d9885f093554aec",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/05_API_Bindings/42a_OpenAI_Compatible_Client.md": {
-    "mtime": 1779739740.8863192,
-    "ast_hash": "f45362339c4847ab8f515b8f3ad58e08",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/05_API_Bindings/43a_Anthropic_API_Integration.md": {
-    "mtime": 1779739740.886386,
-    "ast_hash": "155447a754143fd3f0c05f9da6e95a7f",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/05_API_Bindings/44a_Messaging_Platform_Gateway.md": {
-    "mtime": 1779740540.9932292,
-    "ast_hash": "a7c1a6412cef0ab743b4496c2916d6d4",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/05_API_Bindings/45a_Ollama_Local_Provider.md": {
-    "mtime": 1779740542.0894241,
-    "ast_hash": "c1fb2cee07d7ddf856b6411b72c7e7b6",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/08_DevOps/60a_Docker_Build.md": {
-    "mtime": 1779739740.8872595,
-    "ast_hash": "7a28e240d295a1509368d8d181991162",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/08_DevOps/61a_CI_CD_Pipeline.md": {
-    "mtime": 1779740551.3403342,
-    "ast_hash": "ae752b09657b6ab5e82073e86d1b0b07",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/00_Connections/03_God_Nodes.md": {
-    "mtime": 1779737308.5332491,
-    "ast_hash": "7e5f6ff40dcf5ee6e966a6d98cbf2d80",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/00_Connections/02_Dependency_Order.md": {
-    "mtime": 1779737246.3379765,
-    "ast_hash": "a75dd6590f0e6a9f3c1c10d6d2da8e2b",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/00_Connections/01_Concept_Clusters.md": {
-    "mtime": 1779737188.962791,
-    "ast_hash": "63892ca2f62a3130ab10b605ec7e5547",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/00_Connections/00_Cross_Reference_Map.md": {
-    "mtime": 1779737128.6785316,
-    "ast_hash": "2af8ecdc77c1d31341824a82ea1c4d25",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/00_Connections/06_Phase_Build_Guide.md": {
-    "mtime": 1779823495.7686064,
-    "ast_hash": "de522f221081245a88e6693e070cd016",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/00_Connections/05_Canonical_Types.md": {
-    "mtime": 1779737470.9445212,
-    "ast_hash": "6718a6be8e9a833bf5a15a69a3446b49",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/00_Connections/04_Gap_Analysis.md": {
-    "mtime": 1779737420.553513,
-    "ast_hash": "fcc7516f9bc41156c83fe1bcd350d8ba",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/06_Concurrency/51a_Parallel_Subagent_Spawning.md": {
-    "mtime": 1779740543.9615157,
-    "ast_hash": "187fe69dd56ed48ed5b87c5e6cc431b6",
-    "semantic_hash": ""
-  },
   "/home/rohi/homelab/projects/talon/docs/06_Concurrency/50a_Tokio_Runtime_Config.md": {
     "mtime": 1779740543.821274,
     "ast_hash": "1d3f47004d2fc1b23dc9231dad8470ab",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/docs/00_Connections/07_Graphify_Spec.md": {
-    "mtime": 1779770456.6397493,
-    "ast_hash": "34ab4f628c7eb947acc8520ca1c68593",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/PLAN.md": {
-    "mtime": 1779825171.5933444,
-    "ast_hash": "6b9a09ff5753119814b876d8159ffa84",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/README.md": {
-    "mtime": 1779823495.7676063,
-    "ast_hash": "de4225ea35e17937e4ffe7fd40efcf13",
+  "/home/rohi/homelab/projects/talon/docs/06_Concurrency/51_Channel_Patterns.md": {
+    "mtime": 1779739740.8868082,
+    "ast_hash": "03f54bc278f4995df580757784534ae4",
     "semantic_hash": ""
   },
   "/home/rohi/homelab/projects/talon/.hermes/spec/talos-agent-framework.md": {
@@ -574,64 +694,24 @@
     "ast_hash": "48d4a3a5bb90b3bb4c1242226bd0dd27",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/docs/09_Redis_Iris/66_Redis_Iris_Overview.md": {
-    "mtime": 1779824942.4755967,
-    "ast_hash": "47997ab4e6c471604884b0c63aec642e",
+  "/home/rohi/homelab/projects/talon/.github/dependabot.yml": {
+    "mtime": 1779903822.534617,
+    "ast_hash": "7d39924fca25efd3fc9cb63d0df92aa3",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/docs/09_Redis_Iris/68_Iris_Technical_Integration.md": {
-    "mtime": 1779825026.360354,
-    "ast_hash": "5f3fcf2c39b96141e8d46ace0913a37a",
+  "/home/rohi/homelab/projects/talon/.github/SECURITY.md": {
+    "mtime": 1779903822.534617,
+    "ast_hash": "057e92cfdcc57abdfc54982f1a671e77",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/docs/09_Redis_Iris/67_Iris_Two_Tier_Memory.md": {
-    "mtime": 1779824982.4874377,
-    "ast_hash": "9c1ae23047e2ecd2985b1f7dbd65acca",
+  "/home/rohi/homelab/projects/talon/.github/workflows/release.yml": {
+    "mtime": 1779903822.5348058,
+    "ast_hash": "e85c7a61c621f0a3511e9a8c1daba29d",
     "semantic_hash": ""
   },
-  "/home/rohi/homelab/projects/talon/docs/09_Redis_Iris/69_Iris_Philosophy.md": {
-    "mtime": 1779825072.1343029,
-    "ast_hash": "497e14742dbd204eecff7db1890042ee",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/09_Redis_Iris/70_Iris_Semantic_Cache.md": {
-    "mtime": 1779825100.651891,
-    "ast_hash": "af4968f97964d6fe653aaa2b01f22375",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/CHANGELOG.md": {
-    "mtime": 1779825247.4108841,
-    "ast_hash": "fcaf54030ffd8390cde47137c79c73e4",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/roadmap.md": {
-    "mtime": 1779825225.4054387,
-    "ast_hash": "9c8bbaa2cd1ab90e9552c02ad7b63dba",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/09_Redis_Iris/73_LanceDB_Analysis.md": {
-    "mtime": 1779826051.692723,
-    "ast_hash": "896d4a38bdd35419406182939c048712",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/09_Redis_Iris/72_Claude_LTM_Analysis.md": {
-    "mtime": 1779826017.0330513,
-    "ast_hash": "c718c72a68c9d93cce6de670c31a5c97",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/09_Redis_Iris/71_Brain_Candidates_Overview.md": {
-    "mtime": 1779825984.6674235,
-    "ast_hash": "61ecee0704bc17139612b0ae0877e9e6",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/09_Redis_Iris/75_Qdrant_Rig_Swiftide_Analysis.md": {
-    "mtime": 1779826114.2629347,
-    "ast_hash": "192f8578d4236ec819f3328767777450",
-    "semantic_hash": ""
-  },
-  "/home/rohi/homelab/projects/talon/docs/09_Redis_Iris/74_Mem0_Rust_Analysis.md": {
-    "mtime": 1779826082.0633113,
-    "ast_hash": "55b2d539f7e0ecdae45772c85b77cf2c",
+  "/home/rohi/homelab/projects/talon/.github/workflows/ci.yml": {
+    "mtime": 1779903822.534617,
+    "ast_hash": "75574da03e6d75706f50d223d2ad13e6",
     "semantic_hash": ""
   }
 }

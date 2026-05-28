@@ -42,7 +42,7 @@ impl Tool for SendMessageTool {
          to a specific channel."
     }
 
-    fn approval_level(&self) -> ApprovalLevel { ApprovalLevel::Confirmation }
+    fn approval_level(&self, args: &serde_json::Value) -> ApprovalLevel { ApprovalLevel::NeedsApproval }
 
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let p: SendMessageParams = serde_json::from_value(args)?;

@@ -187,7 +187,7 @@ pub struct BrowserNavigateParams {
 #[async_trait]
 impl Tool for BrowserNavigateTool {
     fn name(&self) -> &str { "browser_navigate" }
-    fn approval_level(&self) -> ApprovalLevel { ApprovalLevel::Confirmation }
+    fn approval_level(&self, args: &serde_json::Value) -> ApprovalLevel { ApprovalLevel::NeedsApproval }
 
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let p: BrowserNavigateParams = serde_json::from_value(args)?;
@@ -228,7 +228,7 @@ pub struct BrowserClickParams {
 #[async_trait]
 impl Tool for BrowserClickTool {
     fn name(&self) -> &str { "browser_click" }
-    fn approval_level(&self) -> ApprovalLevel { ApprovalLevel::Confirmation }
+    fn approval_level(&self, args: &serde_json::Value) -> ApprovalLevel { ApprovalLevel::NeedsApproval }
 
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let p: BrowserClickParams = serde_json::from_value(args)?;
@@ -281,7 +281,7 @@ pub struct BrowserVisionParams {
 #[async_trait]
 impl Tool for BrowserVisionTool {
     fn name(&self) -> &str { "browser_vision" }
-    fn approval_level(&self) -> ApprovalLevel { ApprovalLevel::Confirmation }
+    fn approval_level(&self, args: &serde_json::Value) -> ApprovalLevel { ApprovalLevel::NeedsApproval }
 
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let p: BrowserVisionParams = serde_json::from_value(args)?;

@@ -43,7 +43,7 @@ pub struct WebSearchTool {
 #[async_trait]
 impl Tool for WebSearchTool {
     fn name(&self) -> &str { "web_search" }
-    fn approval_level(&self) -> ApprovalLevel { ApprovalLevel::Confirmation }
+    fn approval_level(&self, args: &serde_json::Value) -> ApprovalLevel { ApprovalLevel::NeedsApproval }
 
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let p: WebSearchParams = serde_json::from_value(args)?;
@@ -189,7 +189,7 @@ pub struct WebExtractTool {
 #[async_trait]
 impl Tool for WebExtractTool {
     fn name(&self) -> &str { "web_extract" }
-    fn approval_level(&self) -> ApprovalLevel { ApprovalLevel::Confirmation }
+    fn approval_level(&self, args: &serde_json::Value) -> ApprovalLevel { ApprovalLevel::NeedsApproval }
 
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let p: WebExtractParams = serde_json::from_value(args)?;

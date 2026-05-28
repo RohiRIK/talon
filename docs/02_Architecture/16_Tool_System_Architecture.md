@@ -19,7 +19,7 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn schema(&self) -> serde_json::Value;
-    fn approval_level(&self) -> ApprovalLevel { ApprovalLevel::Safe }
+    fn approval_level(&self, args: &serde_json::Value) -> ApprovalLevel { ApprovalLevel::Safe }
 
     async fn execute(
         &self,
@@ -38,10 +38,9 @@ pub struct ToolResult {
 /// Canonical approval levels.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ApprovalLevel {
-    Safe,          // Always execute
-    Confirmation,  // Ask once, remember answer
-    Required,      // Always ask, no memory
-    Blocked,       // Never execute
+    Safe,
+    NeedsApproval,
+    Dangerous,
 }
 ```
 
@@ -152,7 +151,7 @@ impl Tool for TerminalTool {
     fn schema(&self) -> serde_json::Value {
         serde_json::to_value(schema_for!(TerminalParams)).unwrap()
     }
-    fn approval_level(&self) -> ApprovalLevel { ApprovalLevel::Required }
+    fn approval_level(&self, args: &serde_json::Value) -> ApprovalLevel { ApprovalLevel::Dangerous }
     // ...
 }
 ```

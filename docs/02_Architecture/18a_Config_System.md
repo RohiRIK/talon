@@ -145,7 +145,7 @@ impl Default for AgentConfig {
             default_provider: "anthropic".into(),
             default_model: "claude-opus-4".into(),
             max_iterations: 50,
-            approval_mode: ApprovalLevel::Confirmation,
+            approval_mode: ApprovalLevel::NeedsApproval,
             system_prompt: SystemPromptConfig::default(),
         }
     }

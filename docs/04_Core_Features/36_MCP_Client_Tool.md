@@ -145,10 +145,10 @@ impl Tool for McpToolAdapter {
         self.tool_def.input_schema.clone()
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
+    fn approval_level(&self, args: &serde_json::Value) -> ApprovalLevel {
         // MCP tools are conservatively rated Confirmation (LocalWrite-class)
         // unless overridden in config
-        ApprovalLevel::Confirmation
+        ApprovalLevel::NeedsApproval
     }
 
     async fn execute(

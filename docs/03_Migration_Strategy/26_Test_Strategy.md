@@ -59,7 +59,7 @@ mod tests {
     #[test]
     fn test_approval_decision_readonly_always_allowed() {
         let membrane = ApprovalMembrane {
-            default_level: ApprovalLevel::Required,
+            default_level: ApprovalLevel::Dangerous,
             ..Default::default()
         };
         // ReadOnly tools are always approved regardless of level
