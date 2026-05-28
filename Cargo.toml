@@ -51,7 +51,7 @@ ratatui          = "0.29"
 crossterm        = "0.28"
 
 # Telegram
-teloxide         = { version = "0.13", features = ["macros"] }
+teloxide         = { version = "0.17", features = ["macros"] }
 
 # CLI
 clap             = { version = "4",    features = ["derive"] }
