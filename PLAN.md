@@ -329,6 +329,15 @@ cargo nextest run -p talon-llm
 
 ---
 
+## Maintenance — Security & CI (2026-05-28)
+
+- [x] M.1 Fix `cargo fmt` drift in `talon-core/src/agent.rs` — CI was failing the format check gate
+- [x] M.2 Upgrade `wasmtime 24 → 43` — fixed 6 CVEs (RUSTSEC-2026-0086/0088/0089/0094/0095/0096); crate was a Phase 6 placeholder with no source usage, zero code changes required
+- [x] M.3 Upgrade `lancedb 0.9 → 0.29` + `arrow-array 52 → 54` — fixed 3 CVEs in transitive `rustls-webpki 0.101.7` (RUSTSEC-2026-0098/0099/0104) pulled in via old AWS SDK; crate was a Phase 2.5 placeholder with no source usage, zero code changes required
+- [x] M.4 CI green on main: fmt ✅ clippy ✅ nextest 219/219 ✅ audit ✅ deny ✅
+
+---
+
 ## Phase 2 — Memory (Weeks 3–4)
 
 > **Edge:** FTS5 full-text search built into the binary (rusqlite bundled). Aider has zero persistent
