@@ -213,6 +213,7 @@ docker build -t talon:phase-N .
 | 0 | Foundation | ✅ Complete (2026-05-27) | `cargo build --workspace --release` green, CI green |
 | 0.5 | Working Prototype | ⬜ Not started | `cargo run -- --message "read Cargo.toml"` works E2E |
 | 1 | Core Agent Loop | ⬜ Not started | Real LLM response, messages persisted to SQLite |
+| 1.5 | Additional LLM Providers | ✅ Complete (2026-05-28) | Codex, ClaudeCode, Antigravity providers behind feature flags, 219 tests green |
 | 2 | Memory (FTS5) | ⬜ Not started | FTS5 search <50ms, context within token budget |
 | 2.5 | Talon LTM + LanceDB | ⬜ Not started | Auto fact recall across sessions |
 | 3 | Tools Tier 1 | ⬜ Not started | `rm -rf /` blocked, all file tools functional |
