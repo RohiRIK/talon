@@ -9,21 +9,44 @@ repository.workspace  = true
 rust-version.workspace = true
 
 [dependencies]
-talon-core.path   = "../talon-core"
+talon-core.path    = "../talon-core"
+talon-llm.path     = "../talon-llm"
+talon-memory.path  = "../talon-memory"
 
-tokio.workspace      = true
-futures.workspace    = true
-serde.workspace      = true
-serde_json.workspace = true
-axum.workspace       = true
-ratatui.workspace    = true
-crossterm.workspace  = true
-thiserror.workspace  = true
-tracing.workspace    = true
+tokio.workspace        = true
+futures.workspace      = true
+serde.workspace        = true
+serde_json.workspace   = true
+axum.workspace         = true
+ratatui.workspace      = true
+crossterm.workspace    = true
+thiserror.workspace    = true
+tracing.workspace      = true
+uuid.workspace         = true
+anyhow.workspace       = true
+
+tui-textarea.workspace       = true
+comrak.workspace             = true
+syntect.workspace            = true
+similar.workspace            = true
+indicatif.workspace          = true
+inquire.workspace            = true
+strip-ansi-escapes.workspace = true
+unicode-width.workspace      = true
+
+[dependencies.ratatui-image]
+workspace = true
+optional  = true
 
 [dependencies.teloxide]
 workspace = true
 optional  = true
 
+[dev-dependencies]
+talon-llm = { path = "../talon-llm", features = ["mock"] }
+tower     = "0.5"
+
 [features]
+default  = []
 telegram = ["dep:teloxide"]
+images   = ["dep:ratatui-image"]

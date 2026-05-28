@@ -38,8 +38,8 @@ This applies to: Talon's system prompt, tool `schema()` descriptions, `SessionSe
 
 ## Current State
 
-**Phase: 4 — Next.** Phases 0–3 complete (2026-05-28). Working prototype, core agent loop, FTS5 memory, all LLM providers, and full tools tier 1 done. `cargo nextest run --workspace` → 275/275 green.
-The next action is Phase 4 (Gateway — CLI, Telegram, HTTP, talon init onboarding wizard). See `PLAN.md` Phase 4 tasks.
+**Phase: 5 — Next.** Phases 0–4 complete (2026-05-28). CLI, TUI (ratatui MVU), HTTP (axum), and Telegram gateways done. `cargo nextest run --workspace` → 337/337 green.
+The next action is Phase 5 (Tools Tier 2 + MCP). Pending from Phase 4: task 4.18 (manual Telegram test) and 4.19 (`talon init` full onboarding wizard with multi-provider detection + model picker). See `PLAN.md`.
 
 ---
 
@@ -217,7 +217,7 @@ docker build -t talon:phase-N .
 | 2 | Memory (FTS5) | ✅ Complete (2026-05-27) | FTS5 search <50ms, context within token budget |
 | 2.5 | Talon LTM + LanceDB | ⬜ Not started | Auto fact recall across sessions |
 | 3 | Tools Tier 1 | ✅ Complete (2026-05-28) | 275 tests green; fs tools + Docker/native sandbox + TimeoutWrapper |
-| 4 | Gateway | ⬜ Not started | CLI + Telegram + HTTP all functional |
+| 4 | Gateway | ✅ Complete (2026-05-28) | CLI + Telegram + HTTP all functional; 337 tests green |
 | 5 | Tools Tier 2 + MCP | ⬜ Not started | MCP server tools discoverable, web search works |
 | 6 | Plugins + Scheduling | ⬜ v1.1 | WASM plugin loads without restart |
 | 7 | Advanced | ⬜ v2 | Parallel subagents, skill evolution |

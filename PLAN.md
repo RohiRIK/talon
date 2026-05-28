@@ -491,29 +491,29 @@ tokio runtime
 ### Tasks
 
 **Gateway foundation**
-- [ ] 4.1 `crates/talon-gateway/src/lib.rs` — `Gateway` trait + normalized `Message` struct + `RenderMode` enum
-- [ ] 4.2 `crates/talon-gateway/src/normalize.rs` — markdown normalization per platform (Telegram strips some syntax, TUI renders all)
-- [ ] 4.3 `crates/talon-gateway/src/cli.rs` — `CliGateway`: stdin/stdout loop, `indicatif` spinner while agent thinks
-- [ ] 4.4 `crates/talon-gateway/src/http.rs` — `HttpGateway` (axum): `POST /v1/messages`, SSE stream `GET /v1/stream/:session_id` — **build this first; no bot token required**
+- [x] 4.1 `crates/talon-gateway/src/lib.rs` — `Gateway` trait + normalized `Message` struct + `RenderMode` enum
+- [x] 4.2 `crates/talon-gateway/src/normalize.rs` — markdown normalization per platform (Telegram strips some syntax, TUI renders all)
+- [x] 4.3 `crates/talon-gateway/src/cli.rs` — `CliGateway`: stdin/stdout loop, `indicatif` spinner while agent thinks
+- [x] 4.4 `crates/talon-gateway/src/http.rs` — `HttpGateway` (axum): `POST /v1/messages`, SSE stream `GET /v1/stream/:session_id` — **build this first; no bot token required**
 
 **TUI gateway**
-- [ ] 4.5 `crates/talon-gateway/src/tui/mod.rs` — `TuiGateway`: startup capability detection (`detect_capabilities()` → `RenderMode`), raw mode init, event loop spawn
-- [ ] 4.6 `crates/talon-gateway/src/tui/app.rs` — `App` struct (MVU model): `messages: Vec<Message>`, `input: TextArea`, `tool_calls: Vec<ActiveTool>`, `layout: LayoutMode`; `update(Msg) -> App` is pure
-- [ ] 4.7 `crates/talon-gateway/src/tui/components/chat.rs` — `ChatView`: streaming markdown renderer; `comrak` AST → ratatui `Text`; `syntect` for fenced code blocks; OSC 8 links; inline images via `ratatui-image` (auto-detects Kitty/iTerm2/Sixel/halfblocks)
-- [ ] 4.8 `crates/talon-gateway/src/tui/components/input.rs` — `InputBar`: `tui-textarea` for multi-line edit; Ctrl+Enter to submit; ↑↓ history; `/` command autocomplete
-- [ ] 4.9 `crates/talon-gateway/src/tui/components/tools.rs` — `ToolPanel`: collapsible (Tab to toggle); spinner per active tool; `similar`-powered diff view for `EditFileTool` proposals (red/green unified diff); expand/collapse individual calls
-- [ ] 4.10 `crates/talon-gateway/src/tui/components/status.rs` — `StatusBar`: model name, token usage, session id, `[NATIVE]` sandbox badge, multiplexer detection (tmux/zellij prefix hint)
-- [ ] 4.11 `crates/talon-gateway/src/tui/layout.rs` — `SplitPane` adaptive layout: `<80 cols` stacked, `≥120 cols` side-by-side; listens to terminal resize events
-- [ ] 4.12 `crates/talon-gateway/src/tui/render.rs` — `detect_capabilities()`: checks `NO_COLOR`, `$TERM`, `--accessible` flag, pipe detection; returns `RenderMode`
+- [x] 4.5 `crates/talon-gateway/src/tui/mod.rs` — `TuiGateway`: startup capability detection (`detect_capabilities()` → `RenderMode`), raw mode init, event loop spawn
+- [x] 4.6 `crates/talon-gateway/src/tui/app.rs` — `App` struct (MVU model): `messages: Vec<Message>`, `input: TextArea`, `tool_calls: Vec<ActiveTool>`, `layout: LayoutMode`; `update(Msg) -> App` is pure
+- [x] 4.7 `crates/talon-gateway/src/tui/components/chat.rs` — `ChatView`: streaming markdown renderer; `comrak` AST → ratatui `Text`; `syntect` for fenced code blocks; OSC 8 links; inline images via `ratatui-image` (auto-detects Kitty/iTerm2/Sixel/halfblocks)
+- [x] 4.8 `crates/talon-gateway/src/tui/components/input.rs` — `InputBar`: `tui-textarea` for multi-line edit; Ctrl+Enter to submit; ↑↓ history; `/` command autocomplete
+- [x] 4.9 `crates/talon-gateway/src/tui/components/tools.rs` — `ToolPanel`: collapsible (Tab to toggle); spinner per active tool; `similar`-powered diff view for `EditFileTool` proposals (red/green unified diff); expand/collapse individual calls
+- [x] 4.10 `crates/talon-gateway/src/tui/components/status.rs` — `StatusBar`: model name, token usage, session id, `[NATIVE]` sandbox badge, multiplexer detection (tmux/zellij prefix hint)
+- [x] 4.11 `crates/talon-gateway/src/tui/layout.rs` — `SplitPane` adaptive layout: `<80 cols` stacked, `≥120 cols` side-by-side; listens to terminal resize events
+- [x] 4.12 `crates/talon-gateway/src/tui/render.rs` — `detect_capabilities()`: checks `NO_COLOR`, `$TERM`, `--accessible` flag, pipe detection; returns `RenderMode`
 
 **Remaining gateways**
-- [ ] 4.13 `crates/talon-gateway/src/telegram.rs` — `TelegramGateway` (teloxide): polling + webhook modes
-- [ ] 4.14 `crates/talon-tools/src/send_message.rs` — `SendMessageTool` (NeedsApproval): agent pushes to any channel
-- [ ] 4.15 `crates/talon-gateway/src/registry.rs` — `GatewayRegistry`: `HashMap<ChannelId, Arc<dyn Gateway>>`
-- [ ] 4.16 Update `talon/src/main.rs`: `--gateway cli,tui,telegram,http` flag; `--accessible` flag; spawn each as `tokio::spawn`
-- [ ] 4.17 Integration tests: CLI roundtrip, HTTP POST roundtrip with mock LLM, TUI render smoke test (headless)
+- [x] 4.13 `crates/talon-gateway/src/telegram.rs` — `TelegramGateway` (teloxide): polling + webhook modes
+- [x] 4.14 `crates/talon-tools/src/send_message.rs` — `SendMessageTool` (NeedsApproval): agent pushes to any channel
+- [x] 4.15 `crates/talon-gateway/src/registry.rs` — `GatewayRegistry`: `HashMap<ChannelId, Arc<dyn Gateway>>`
+- [x] 4.16 Update `talon/src/main.rs`: `--gateway cli,tui,telegram,http` flag; `--accessible` flag; spawn each as `tokio::spawn`
+- [x] 4.17 Integration tests: CLI roundtrip, HTTP POST roundtrip with mock LLM, TUI render smoke test (headless)
 - [ ] 4.18 Manual test: Telegram bot responds within 5s end-to-end
-- [ ] 4.19 `talon init` onboarding wizard — `talon/src/init.rs`: detect available provider(s) by probing auth (env vars, CLI tools); query each provider's models endpoint (e.g. `GET https://api.githubcopilot.com/models`); present an interactive numbered list of `model_picker_enabled` models; write chosen model to `~/.talon/config.toml [llm] model`; all providers read this config first, then `TALON_LLM_MODEL` env override, then their `DEFAULT_MODEL` constant as last-resort fallback. Run automatically on first launch when no config exists.
+- [ ] 4.19 `talon init` onboarding wizard — `talon/src/init.rs`: detect available provider(s) by probing auth (env vars, CLI tools); query each provider's models endpoint (e.g. `GET https://api.githubcopilot.com/models`); present an interactive numbered list of `model_picker_enabled` models; write chosen model to `~/.talon/config.toml [llm] model`; all providers read this config first, then `TALON_LLM_MODEL` env override, then their `DEFAULT_MODEL` constant as last-reste fallback. Run automatically on first launch when no config exists.
 
 ### New workspace dependencies (add in this phase)
 

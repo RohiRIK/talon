@@ -76,6 +76,16 @@ impl Agent {
 
             self.emit(AgentEvent::LlmResponse).await;
 
+            // Emit text content so gateways can display the assistant response.
+            for block in &response.content {
+                if let ContentBlock::Text { text } = block {
+                    self.emit(AgentEvent::Text {
+                        content: text.clone(),
+                    })
+                    .await;
+                }
+            }
+
             let assistant_json = serde_json::to_value(&response.content)
                 .map_err(|e| CoreError::InvalidState(e.to_string()))?;
             messages.push(Message::assistant(assistant_json.clone()));

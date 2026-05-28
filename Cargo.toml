@@ -47,7 +47,7 @@ lancedb          = "0.29"
 arrow-array      = "54"
 
 # TUI
-ratatui          = "0.28"
+ratatui          = "0.29"
 crossterm        = "0.28"
 
 # Telegram
@@ -73,5 +73,16 @@ tracing-subscriber   = { version = "0.3", features = ["env-filter"] }
 # Identifiers + time
 uuid    = { version = "1", features = ["v4"] }
 chrono  = { version = "0.4", features = ["serde"] }
+
+# Phase 4 — Gateway
+tui-textarea         = "0.7"
+ratatui-image        = "2"
+comrak               = "0.28"
+syntect              = "5"
+similar              = "2"
+indicatif            = "0.17"
+inquire              = "0.7"
+strip-ansi-escapes   = "0.2"
+unicode-width        = "0.2"
 
 # NOTE: async-trait is intentionally absent — edition 2024 has native async fn in traits.

@@ -6,11 +6,14 @@ use std::io::{self, Write as _};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
-use talon_core::agent::Agent;
 use talon_core::approval::ApprovalLevel;
-use talon_core::events::AgentEvent;
-use talon_core::tools::dispatcher::ToolDispatcher;
 use talon_core::tools::{Tool, ToolContext, ToolResult};
+use talon_gateway::{
+    GatewayContext, Gateway,
+    cli::CliGateway,
+    http::HttpGateway,
+    tui::TuiGateway,
+};
 use talon_llm::{AnthropicProvider, LlmProvider};
 use talon_memory::{Database, SqliteStore};
 use talon_tools::SessionSearchTool;
@@ -38,9 +41,13 @@ struct Cli {
     #[arg(long, default_value = "info", value_name = "LEVEL")]
     log_level: String,
 
-    /// Gateways to enable, comma-separated: cli,telegram,http,tui
-    #[arg(long, default_value = "cli", value_name = "GATEWAYS")]
+    /// Gateway to use: cli, tui, http
+    #[arg(long, default_value = "cli", value_name = "GATEWAY")]
     gateway: String,
+
+    /// Accessible mode — line-by-line output, no TUI escape sequences
+    #[arg(long)]
+    accessible: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -181,7 +188,7 @@ async fn main() -> Result<()> {
         Some(Commands::Memory { action }) => cmd_memory(action).await,
         Some(Commands::Cache { action }) => cmd_cache(action).await,
         Some(Commands::Doctor) => cmd_doctor().await,
-        None => cmd_run(cli.message, cli.config, cli.gateway).await,
+        None => cmd_run(cli.message, cli.config, cli.gateway, cli.accessible).await,
     }
 }
 
@@ -270,14 +277,9 @@ async fn cmd_doctor() -> Result<()> {
 async fn cmd_run(
     message: Option<String>,
     _config: Option<PathBuf>,
-    _gateway: String,
+    gateway_flag: String,
+    accessible: bool,
 ) -> Result<()> {
-    let Some(msg) = message else {
-        println!("No message provided. Run `talon --help` for usage.");
-        println!("Or run `talon init` to set up Talon.");
-        return Ok(());
-    };
-
     let api_key = std::env::var("TALON_LLM_API_KEY")
         .ok()
         .or_else(load_api_key)
@@ -288,56 +290,48 @@ async fn cmd_run(
         return Ok(());
     }
 
-    run_agent(api_key, msg).await
+    let ctx = build_gateway_context(api_key).await?;
+    let ctx = Arc::new(ctx);
+
+    // Single-turn mode: --message "..." skips the interactive REPL.
+    if let Some(msg) = message {
+        let cli = CliGateway::new(Arc::clone(&ctx), talon_gateway::RenderMode::Plain);
+        cli.run_turn_pub(msg)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        return Ok(());
+    }
+
+    // Multi-turn mode: choose gateway based on --gateway flag.
+    let gateway: Arc<dyn Gateway> = match gateway_flag.as_str() {
+        "http" => {
+            let addr = "127.0.0.1:7777".parse().context("invalid HTTP addr")?;
+            Arc::new(HttpGateway::new(Arc::clone(&ctx), addr))
+        }
+        "tui" => Arc::new(TuiGateway::new(Arc::clone(&ctx), accessible, "talon")),
+        _ => {
+            // "cli" and any unknown value fall back to CLI.
+            let mode = if accessible {
+                talon_gateway::RenderMode::Accessible
+            } else {
+                talon_gateway::RenderMode::Plain
+            };
+            Arc::new(CliGateway::new(Arc::clone(&ctx), mode))
+        }
+    };
+
+    gateway.run().await.map_err(|e| anyhow::anyhow!("{e}"))
 }
 
-// ── Agent loop ────────────────────────────────────────────────────────────────
-
-async fn run_agent(api_key: String, user_message: String) -> Result<()> {
-    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<AgentEvent>(64);
-
-    // Spawn a task that prints text output from the agent.
-    // Dangerous tools emit ApprovalRequested — we prompt the user via stderr.
-    let printer = tokio::spawn(async move {
-        while let Some(event) = event_rx.recv().await {
-            match event {
-                AgentEvent::ApprovalRequested {
-                    tool_name,
-                    args,
-                    tx,
-                    ..
-                } => {
-                    eprint!("[talon] approve {tool_name}({args})? [y/n]: ");
-                    io::stderr().flush().ok();
-                    let mut answer = String::new();
-                    io::stdin().read_line(&mut answer).ok();
-                    let approved = answer.trim().eq_ignore_ascii_case("y");
-                    tx.send(approved).ok();
-                }
-                AgentEvent::ToolResult {
-                    content, is_error, ..
-                } => {
-                    if is_error {
-                        tracing::warn!("tool error: {content}");
-                    } else {
-                        tracing::debug!("tool result: {content}");
-                    }
-                }
-                AgentEvent::Failed(msg) => eprintln!("[talon] agent failed: {msg}"),
-                AgentEvent::Completed => {
-                    // Final text is already in the last LlmResponse — Agent emits it.
-                }
-                _ => {}
-            }
-        }
-    });
-
+async fn build_gateway_context(api_key: String) -> Result<GatewayContext> {
     let provider: Arc<dyn LlmProvider> = Arc::new(AnthropicProvider::new(api_key));
-    let mut dispatcher = ToolDispatcher::new();
-    dispatcher.register(Arc::new(EchoTool));
-    dispatcher.register(Arc::new(ReadFileTool));
+    let mut ctx = GatewayContext::new(provider);
 
-    // Set up DB persistence and memory tools if ~/.talon/talon.db is reachable.
+    // Register built-in tools.
+    ctx = ctx.with_tool(Arc::new(EchoTool));
+    ctx = ctx.with_tool(Arc::new(ReadFileTool));
+
+    // Set up DB persistence and register memory tools.
     let db = talon_home()
         .ok()
         .map(|p| p.join("talon.db"))
@@ -347,32 +341,12 @@ async fn run_agent(api_key: String, user_message: String) -> Result<()> {
 
     if let Some(ref db) = db {
         db.init_schema().await.ok();
-        // Register SessionSearchTool so the LLM can search past conversations.
         let store = Arc::new(SqliteStore::new(Arc::clone(db)));
-        dispatcher.register(Arc::new(SessionSearchTool::new(store)));
+        ctx = ctx.with_tool(Arc::new(SessionSearchTool::new(store)));
+        ctx = ctx.with_db(Arc::clone(db));
     }
 
-    let mut agent = {
-        let a = Agent::new(provider, dispatcher, event_tx);
-        match db {
-            Some(d) => a.with_db(d),
-            None => a,
-        }
-    };
-
-    let session_id = uuid::Uuid::new_v4().to_string();
-
-    let run_result = agent.run(&session_id, user_message).await;
-
-    // Wait for the event printer to drain.
-    printer.await.ok();
-
-    // Print the last assistant text (extracted from the final response stored in messages).
-    // The agent already stored it; retrieve via a separate LLM response event isn't needed
-    // here since we subscribe to events. Emit final text via tracing for now.
-    run_result.map_err(|e| anyhow::anyhow!("{e}"))?;
-
-    Ok(())
+    Ok(ctx)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -504,9 +478,23 @@ mod tests {
     }
 
     #[test]
-    fn cli_gateway_accepts_multiple_values() -> Result<()> {
-        let cli = Cli::try_parse_from(["talon", "--gateway", "cli,telegram"])?;
-        assert_eq!(cli.gateway, "cli,telegram");
+    fn cli_gateway_accepts_http_value() -> Result<()> {
+        let cli = Cli::try_parse_from(["talon", "--gateway", "http"])?;
+        assert_eq!(cli.gateway, "http");
+        Ok(())
+    }
+
+    #[test]
+    fn cli_accessible_flag_defaults_false() -> Result<()> {
+        let cli = Cli::try_parse_from(["talon"])?;
+        assert!(!cli.accessible);
+        Ok(())
+    }
+
+    #[test]
+    fn cli_accessible_flag_set() -> Result<()> {
+        let cli = Cli::try_parse_from(["talon", "--accessible"])?;
+        assert!(cli.accessible);
         Ok(())
     }
 
@@ -714,7 +702,7 @@ mod tests {
 
     #[tokio::test]
     async fn cmd_run_with_no_message_returns_ok() -> Result<()> {
-        cmd_run(None, None, "cli".to_string()).await
+        cmd_run(None, None, "cli".to_string(), false).await
     }
 
     #[tokio::test]
@@ -723,7 +711,7 @@ mod tests {
         if std::env::var("TALON_LLM_API_KEY").is_ok() {
             return Ok(());
         }
-        cmd_run(Some("hello".to_string()), None, "cli".to_string()).await
+        cmd_run(Some("hello".to_string()), None, "cli".to_string(), false).await
     }
 
     // ── Tool impls ────────────────────────────────────────────────────────────

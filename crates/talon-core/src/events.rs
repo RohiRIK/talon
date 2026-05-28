@@ -11,6 +11,10 @@ pub enum AgentEvent {
     Started,
     LlmRequest,
     LlmResponse,
+    /// Full assistant text from one LLM turn (emitted before Completed).
+    Text {
+        content: String,
+    },
     ToolCalled {
         id: String,
         name: String,
@@ -40,6 +44,7 @@ impl fmt::Debug for AgentEvent {
             Self::Started => write!(f, "AgentEvent::Started"),
             Self::LlmRequest => write!(f, "AgentEvent::LlmRequest"),
             Self::LlmResponse => write!(f, "AgentEvent::LlmResponse"),
+            Self::Text { content } => write!(f, "AgentEvent::Text({} chars)", content.len()),
             Self::ToolCalled { id, name, .. } => f
                 .debug_struct("AgentEvent::ToolCalled")
                 .field("id", id)
