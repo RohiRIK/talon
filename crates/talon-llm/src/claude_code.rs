@@ -28,9 +28,13 @@ impl ClaudeCodeProvider {
 
     pub fn new() -> Result<Self, LlmError> {
         let auth = Self::resolve_auth()?;
-        let model = std::env::var("TALON_LLM_MODEL")
-            .unwrap_or_else(|_| Self::DEFAULT_MODEL.to_string());
-        Ok(Self { client: Client::new(), auth, model })
+        let model =
+            std::env::var("TALON_LLM_MODEL").unwrap_or_else(|_| Self::DEFAULT_MODEL.to_string());
+        Ok(Self {
+            client: Client::new(),
+            auth,
+            model,
+        })
     }
 
     fn resolve_auth() -> Result<AnthropicAuth, LlmError> {
@@ -108,7 +112,10 @@ impl ClaudeCodeProvider {
             .json()
             .await
             .map_err(|e| LlmError::InvalidResponse(e.to_string()))?;
-        Ok(LlmResponse { content: raw.content, stop_reason: raw.stop_reason })
+        Ok(LlmResponse {
+            content: raw.content,
+            stop_reason: raw.stop_reason,
+        })
     }
 }
 

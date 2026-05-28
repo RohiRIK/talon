@@ -68,7 +68,10 @@ mod tests {
     #[tokio::test]
     async fn arc_dyn_memory_store_is_constructible() {
         let store: Arc<dyn MemoryStore> = Arc::new(StubStore);
-        store.save_message("s", "user", "hello").await.expect("save");
+        store
+            .save_message("s", "user", "hello")
+            .await
+            .expect("save");
     }
 
     #[tokio::test]

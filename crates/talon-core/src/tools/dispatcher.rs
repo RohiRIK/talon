@@ -64,18 +64,28 @@ impl ToolDispatcher {
         let mut set: JoinSet<Result<ToolResult, CoreError>> = JoinSet::new();
 
         for call in calls {
-            let tool = self.tools.get(&call.name).cloned().ok_or_else(|| {
-                CoreError::Tool {
+            let tool = self
+                .tools
+                .get(&call.name)
+                .cloned()
+                .ok_or_else(|| CoreError::Tool {
                     tool: call.name.clone(),
                     message: "tool not found".to_string(),
-                }
-            })?;
+                })?;
             let sem = Arc::clone(&sem);
             set.spawn(async move {
-                let _permit = sem.acquire_owned().await.map_err(|_| CoreError::InvalidState(
-                    "semaphore closed".to_string(),
-                ))?;
-                Ok(tool.execute(call.args, ToolContext { allow_parallel: true }).await)
+                let _permit = sem
+                    .acquire_owned()
+                    .await
+                    .map_err(|_| CoreError::InvalidState("semaphore closed".to_string()))?;
+                Ok(tool
+                    .execute(
+                        call.args,
+                        ToolContext {
+                            allow_parallel: true,
+                        },
+                    )
+                    .await)
             });
         }
 
@@ -184,8 +194,14 @@ mod tests {
     async fn sequential_dispatch_returns_results_in_order() {
         let d = make_dispatcher();
         let calls = vec![
-            ToolCall { name: "echo".to_string(), args: serde_json::json!({"msg": "a"}) },
-            ToolCall { name: "echo".to_string(), args: serde_json::json!({"msg": "b"}) },
+            ToolCall {
+                name: "echo".to_string(),
+                args: serde_json::json!({"msg": "a"}),
+            },
+            ToolCall {
+                name: "echo".to_string(),
+                args: serde_json::json!({"msg": "b"}),
+            },
         ];
         let results = d.dispatch_sequential(calls).await.expect("dispatch");
         assert_eq!(results.len(), 2);
@@ -220,13 +236,23 @@ mod tests {
     async fn parallel_dispatch_runs_all_calls() {
         let d = make_dispatcher();
         let calls = vec![
-            ToolCall { name: "echo".to_string(), args: serde_json::json!({"msg": "x"}) },
-            ToolCall { name: "echo".to_string(), args: serde_json::json!({"msg": "y"}) },
-            ToolCall { name: "echo".to_string(), args: serde_json::json!({"msg": "z"}) },
+            ToolCall {
+                name: "echo".to_string(),
+                args: serde_json::json!({"msg": "x"}),
+            },
+            ToolCall {
+                name: "echo".to_string(),
+                args: serde_json::json!({"msg": "y"}),
+            },
+            ToolCall {
+                name: "echo".to_string(),
+                args: serde_json::json!({"msg": "z"}),
+            },
         ];
         let results = d.dispatch_parallel(calls).await.expect("dispatch");
         assert_eq!(results.len(), 3);
-        let contents: std::collections::HashSet<_> = results.iter().map(|r| r.content.as_str()).collect();
+        let contents: std::collections::HashSet<_> =
+            results.iter().map(|r| r.content.as_str()).collect();
         assert!(contents.contains("x"));
         assert!(contents.contains("y"));
         assert!(contents.contains("z"));

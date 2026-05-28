@@ -52,14 +52,18 @@ mod tests {
     fn thinking_to_calling_tool_is_valid() {
         let s = AgentState::Thinking;
         let next = s
-            .transition(AgentState::CallingTool { tool_name: "echo".to_string() })
+            .transition(AgentState::CallingTool {
+                tool_name: "echo".to_string(),
+            })
             .expect("valid");
         assert!(matches!(next, AgentState::CallingTool { .. }));
     }
 
     #[test]
     fn calling_tool_back_to_thinking_is_valid() {
-        let s = AgentState::CallingTool { tool_name: "echo".to_string() };
+        let s = AgentState::CallingTool {
+            tool_name: "echo".to_string(),
+        };
         let next = s.transition(AgentState::Thinking).expect("valid");
         assert_eq!(next, AgentState::Thinking);
     }
@@ -74,7 +78,9 @@ mod tests {
     #[test]
     fn thinking_to_failed_is_valid() {
         let s = AgentState::Thinking;
-        let next = s.transition(AgentState::Failed("oops".to_string())).expect("valid");
+        let next = s
+            .transition(AgentState::Failed("oops".to_string()))
+            .expect("valid");
         assert!(matches!(next, AgentState::Failed(_)));
     }
 
@@ -120,13 +126,23 @@ mod tests {
 
     #[test]
     fn calling_tool_is_not_terminal() {
-        assert!(!AgentState::CallingTool { tool_name: "x".to_string() }.is_terminal());
+        assert!(
+            !AgentState::CallingTool {
+                tool_name: "x".to_string()
+            }
+            .is_terminal()
+        );
     }
 
     #[test]
     fn idle_to_calling_tool_is_invalid() {
         let s = AgentState::Idle;
-        assert!(s.transition(AgentState::CallingTool { tool_name: "t".to_string() }).is_err());
+        assert!(
+            s.transition(AgentState::CallingTool {
+                tool_name: "t".to_string()
+            })
+            .is_err()
+        );
     }
 
     #[test]
@@ -137,7 +153,9 @@ mod tests {
 
     #[test]
     fn calling_tool_to_completed_is_invalid() {
-        let s = AgentState::CallingTool { tool_name: "t".to_string() };
+        let s = AgentState::CallingTool {
+            tool_name: "t".to_string(),
+        };
         assert!(s.transition(AgentState::Completed).is_err());
     }
 

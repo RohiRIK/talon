@@ -129,7 +129,8 @@ impl Database {
     ) -> Result<Vec<StoredMessage>, MemoryError> {
         let sid = session_id.to_string();
         let n = n as i64;
-        let rows: Vec<StoredMessage> = self.pool
+        let rows: Vec<StoredMessage> = self
+            .pool
             .get()
             .await?
             .interact(move |conn| -> rusqlite::Result<Vec<StoredMessage>> {
@@ -156,7 +157,8 @@ impl Database {
     ) -> Result<Vec<StoredMessage>, MemoryError> {
         let query = query.to_string();
         let limit = limit as i64;
-        let rows: Vec<StoredMessage> = self.pool
+        let rows: Vec<StoredMessage> = self
+            .pool
             .get()
             .await?
             .interact(move |conn| -> rusqlite::Result<Vec<StoredMessage>> {
@@ -189,7 +191,8 @@ impl Database {
 
     /// Return basic stats about the database.
     pub async fn stats(&self) -> Result<DbStats, MemoryError> {
-        let s: DbStats = self.pool
+        let s: DbStats = self
+            .pool
             .get()
             .await?
             .interact(|conn| -> rusqlite::Result<DbStats> {
@@ -197,10 +200,8 @@ impl Database {
                     conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0))?;
                 let message_count: i64 =
                     conn.query_row("SELECT COUNT(*) FROM messages", [], |r| r.get(0))?;
-                let page_count: i64 =
-                    conn.query_row("PRAGMA page_count", [], |r| r.get(0))?;
-                let page_size: i64 =
-                    conn.query_row("PRAGMA page_size", [], |r| r.get(0))?;
+                let page_count: i64 = conn.query_row("PRAGMA page_count", [], |r| r.get(0))?;
+                let page_size: i64 = conn.query_row("PRAGMA page_size", [], |r| r.get(0))?;
                 Ok(DbStats {
                     session_count,
                     message_count,
@@ -301,7 +302,9 @@ mod tests {
     async fn save_message_auto_creates_session() {
         let db = open_db().await;
         // No explicit ensure_session call.
-        db.save_message("auto-session", "user", "hi").await.expect("save");
+        db.save_message("auto-session", "user", "hi")
+            .await
+            .expect("save");
         let rows = db.recent_messages("auto-session", 1).await.expect("recent");
         assert_eq!(rows.len(), 1);
     }
@@ -310,7 +313,9 @@ mod tests {
     async fn recent_messages_returns_oldest_first() {
         let db = open_db().await;
         db.save_message("s2", "user", "first").await.expect("1");
-        db.save_message("s2", "assistant", "second").await.expect("2");
+        db.save_message("s2", "assistant", "second")
+            .await
+            .expect("2");
         db.save_message("s2", "user", "third").await.expect("3");
 
         let rows = db.recent_messages("s2", 10).await.expect("recent");
@@ -323,7 +328,9 @@ mod tests {
     async fn recent_messages_respects_limit() {
         let db = open_db().await;
         for i in 0..5 {
-            db.save_message("s3", "user", &format!("msg{i}")).await.expect("save");
+            db.save_message("s3", "user", &format!("msg{i}"))
+                .await
+                .expect("save");
         }
         let rows = db.recent_messages("s3", 3).await.expect("recent");
         assert_eq!(rows.len(), 3);
@@ -335,8 +342,12 @@ mod tests {
     #[tokio::test]
     async fn search_messages_fts_returns_match() {
         let db = open_db().await;
-        db.save_message("s4", "user", "the quick brown fox").await.expect("save");
-        db.save_message("s4", "assistant", "hello world").await.expect("save");
+        db.save_message("s4", "user", "the quick brown fox")
+            .await
+            .expect("save");
+        db.save_message("s4", "assistant", "hello world")
+            .await
+            .expect("save");
 
         let results = db.search_messages("fox", 10).await.expect("search");
         assert_eq!(results.len(), 1);
@@ -346,7 +357,9 @@ mod tests {
     #[tokio::test]
     async fn search_messages_returns_empty_on_no_match() {
         let db = open_db().await;
-        db.save_message("s5", "user", "nothing relevant here").await.expect("save");
+        db.save_message("s5", "user", "nothing relevant here")
+            .await
+            .expect("save");
 
         let results = db.search_messages("xyzzy", 10).await.expect("search");
         assert!(results.is_empty());
@@ -366,7 +379,11 @@ mod tests {
             .await
             .expect("pool")
             .interact(|conn| {
-                conn.query_row("SELECT COUNT(*) FROM tool_calls WHERE session_id='s6'", [], |r| r.get(0))
+                conn.query_row(
+                    "SELECT COUNT(*) FROM tool_calls WHERE session_id='s6'",
+                    [],
+                    |r| r.get(0),
+                )
             })
             .await
             .expect("interact")

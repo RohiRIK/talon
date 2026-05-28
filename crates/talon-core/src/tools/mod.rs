@@ -95,7 +95,9 @@ mod tests {
 
     #[test]
     fn tool_context_parallel_can_be_set() {
-        let ctx = ToolContext { allow_parallel: true };
+        let ctx = ToolContext {
+            allow_parallel: true,
+        };
         assert!(ctx.allow_parallel);
     }
 
@@ -172,8 +174,12 @@ mod tests {
     fn tool_trait_approval_level_all_variants() {
         struct DangerTool;
         impl Tool for DangerTool {
-            fn name(&self) -> &str { "danger" }
-            fn schema(&self) -> Value { serde_json::json!({}) }
+            fn name(&self) -> &str {
+                "danger"
+            }
+            fn schema(&self) -> Value {
+                serde_json::json!({})
+            }
             fn approval_level(&self, _args: &Value) -> ApprovalLevel {
                 ApprovalLevel::Dangerous
             }
@@ -197,10 +203,18 @@ mod tests {
     fn tool_approval_level_varies_by_args() {
         struct SmartTool;
         impl Tool for SmartTool {
-            fn name(&self) -> &str { "smart" }
-            fn schema(&self) -> Value { serde_json::json!({}) }
+            fn name(&self) -> &str {
+                "smart"
+            }
+            fn schema(&self) -> Value {
+                serde_json::json!({})
+            }
             fn approval_level(&self, args: &Value) -> ApprovalLevel {
-                if args.get("destructive").and_then(|v| v.as_bool()).unwrap_or(false) {
+                if args
+                    .get("destructive")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                {
                     ApprovalLevel::Dangerous
                 } else {
                     ApprovalLevel::Safe
@@ -223,9 +237,6 @@ mod tests {
             SmartTool.approval_level(&serde_json::json!({"destructive": true})),
             ApprovalLevel::Dangerous
         );
-        assert_eq!(
-            SmartTool.approval_level(&Value::Null),
-            ApprovalLevel::Safe
-        );
+        assert_eq!(SmartTool.approval_level(&Value::Null), ApprovalLevel::Safe);
     }
 }

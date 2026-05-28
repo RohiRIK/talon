@@ -28,9 +28,8 @@ pub fn run(conn: &Connection) -> Result<(), MemoryError> {
         if version <= current_version {
             continue;
         }
-        conn.execute_batch(sql).map_err(|e| {
-            MemoryError::MigrationFailed(format!("v{version}: {e}"))
-        })?;
+        conn.execute_batch(sql)
+            .map_err(|e| MemoryError::MigrationFailed(format!("v{version}: {e}")))?;
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations (version) VALUES (?1)",
             [version],
@@ -65,8 +64,18 @@ mod tests {
                 .expect("collect")
         };
 
-        for expected in &["messages", "sessions", "schema_migrations", "tool_calls", "skills", "user_facts"] {
-            assert!(tables.iter().any(|t| t == expected), "missing table: {expected}");
+        for expected in &[
+            "messages",
+            "sessions",
+            "schema_migrations",
+            "tool_calls",
+            "skills",
+            "user_facts",
+        ] {
+            assert!(
+                tables.iter().any(|t| t == expected),
+                "missing table: {expected}"
+            );
         }
     }
 
@@ -83,7 +92,9 @@ mod tests {
         run(&conn).expect("migrations");
 
         let version: i64 = conn
-            .query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0))
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |r| {
+                r.get(0)
+            })
             .expect("query");
         assert_eq!(version, 1);
     }
@@ -108,11 +119,8 @@ mod tests {
         let conn = in_memory();
         run(&conn).expect("migrations");
 
-        conn.execute(
-            "INSERT INTO sessions (id) VALUES ('s1')",
-            [],
-        )
-        .expect("session");
+        conn.execute("INSERT INTO sessions (id) VALUES ('s1')", [])
+            .expect("session");
         conn.execute(
             "INSERT INTO messages (session_id, role, content) VALUES ('s1', 'user', 'hello world')",
             [],
@@ -134,7 +142,8 @@ mod tests {
         let conn = in_memory();
         run(&conn).expect("migrations");
 
-        conn.execute("INSERT INTO sessions (id) VALUES ('s2')", []).expect("session");
+        conn.execute("INSERT INTO sessions (id) VALUES ('s2')", [])
+            .expect("session");
         conn.execute(
             "INSERT INTO messages (session_id, role, content) VALUES ('s2', 'assistant', 'running fast')",
             [],
@@ -161,6 +170,9 @@ mod tests {
             "INSERT INTO messages (session_id, role, content) VALUES ('no-such-session', 'user', 'oops')",
             [],
         );
-        assert!(result.is_err(), "FK constraint should reject orphaned message");
+        assert!(
+            result.is_err(),
+            "FK constraint should reject orphaned message"
+        );
     }
 }

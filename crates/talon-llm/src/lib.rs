@@ -144,7 +144,10 @@ mod tests {
             input: json!({ "path": "./Cargo.toml" }),
         };
         let val = serde_json::to_value(&block).expect("serialize");
-        assert_eq!(val["type"], "tool_use", "Anthropic API requires snake_case type tag");
+        assert_eq!(
+            val["type"], "tool_use",
+            "Anthropic API requires snake_case type tag"
+        );
         assert_eq!(val["id"], "toolu_01");
         assert_eq!(val["name"], "read_file");
         assert_eq!(val["input"]["path"], "./Cargo.toml");

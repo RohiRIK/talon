@@ -16,8 +16,7 @@ pub struct OpenAIProvider {
 
 impl OpenAIProvider {
     pub fn new(api_key: String) -> Self {
-        let model = std::env::var("TALON_LLM_MODEL")
-            .unwrap_or_else(|_| "gpt-4o-mini".to_string());
+        let model = std::env::var("TALON_LLM_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
         Self {
             client: Client::new(),
             api_key,
@@ -94,7 +93,9 @@ impl OpenAIProvider {
 
         let mut content: Vec<ContentBlock> = Vec::new();
 
-        if let Some(text) = choice.message.content && !text.is_empty() {
+        if let Some(text) = choice.message.content
+            && !text.is_empty()
+        {
             content.push(ContentBlock::Text { text });
         }
 
@@ -195,8 +196,8 @@ mod tests {
 
     #[test]
     fn arc_dyn_llm_provider_is_constructible() {
-        use std::sync::Arc;
         use crate::LlmProvider;
+        use std::sync::Arc;
         let provider: Arc<dyn LlmProvider> = Arc::new(OpenAIProvider::new("key".to_string()));
         let _ = provider;
     }
@@ -275,7 +276,8 @@ mod tests {
     fn raw_tool_call_arguments_parsed_as_json() {
         // If arguments is valid JSON, it should deserialize to a Value.
         let args_str = r#"{"path": "/tmp/test.txt"}"#;
-        let parsed: serde_json::Value = serde_json::from_str(args_str).unwrap_or(serde_json::Value::Null);
+        let parsed: serde_json::Value =
+            serde_json::from_str(args_str).unwrap_or(serde_json::Value::Null);
         assert_eq!(parsed["path"], "/tmp/test.txt");
     }
 
@@ -283,7 +285,8 @@ mod tests {
     fn invalid_tool_arguments_fall_back_to_null() {
         // If arguments is invalid JSON, fall back to Null (not a crash).
         let args_str = "not valid json {{";
-        let parsed: serde_json::Value = serde_json::from_str(args_str).unwrap_or(serde_json::Value::Null);
+        let parsed: serde_json::Value =
+            serde_json::from_str(args_str).unwrap_or(serde_json::Value::Null);
         assert!(parsed.is_null());
     }
 }

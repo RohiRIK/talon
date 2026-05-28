@@ -26,10 +26,12 @@ async fn make_store() -> Arc<SqliteStore> {
 async fn populate(store: &dyn MemoryStore, n: usize) {
     for i in 0..n {
         let role = if i % 2 == 0 { "user" } else { "assistant" };
-        let content = format!(
-            "Message {i}: Talon is a memory-first AI coding assistant built in Rust."
-        );
-        store.save_message("bench-session", role, &content).await.expect("save");
+        let content =
+            format!("Message {i}: Talon is a memory-first AI coding assistant built in Rust.");
+        store
+            .save_message("bench-session", role, &content)
+            .await
+            .expect("save");
     }
 }
 
@@ -40,11 +42,22 @@ async fn insert_100_messages_and_retrieve_all() {
     let store = make_store().await;
     populate(store.as_ref(), 100).await;
 
-    let rows = store.recent_messages("bench-session", 100).await.expect("recent");
+    let rows = store
+        .recent_messages("bench-session", 100)
+        .await
+        .expect("recent");
     assert_eq!(rows.len(), 100, "expected 100 messages, got {}", rows.len());
     // Oldest-first order: first message should mention index 0.
-    assert!(rows[0].content.contains("Message 0"), "first row: {}", rows[0].content);
-    assert!(rows[99].content.contains("Message 99"), "last row: {}", rows[99].content);
+    assert!(
+        rows[0].content.contains("Message 0"),
+        "first row: {}",
+        rows[0].content
+    );
+    assert!(
+        rows[99].content.contains("Message 99"),
+        "last row: {}",
+        rows[99].content
+    );
 }
 
 #[tokio::test]
@@ -52,11 +65,27 @@ async fn insert_200_messages_recent_window_respects_limit() {
     let store = make_store().await;
     populate(store.as_ref(), 200).await;
 
-    let rows = store.recent_messages("bench-session", 50).await.expect("recent");
-    assert_eq!(rows.len(), 50, "expected 50 most recent, got {}", rows.len());
+    let rows = store
+        .recent_messages("bench-session", 50)
+        .await
+        .expect("recent");
+    assert_eq!(
+        rows.len(),
+        50,
+        "expected 50 most recent, got {}",
+        rows.len()
+    );
     // The 50 most recent should be messages 150–199.
-    assert!(rows[0].content.contains("Message 150"), "oldest of window: {}", rows[0].content);
-    assert!(rows[49].content.contains("Message 199"), "newest of window: {}", rows[49].content);
+    assert!(
+        rows[0].content.contains("Message 150"),
+        "oldest of window: {}",
+        rows[0].content
+    );
+    assert!(
+        rows[49].content.contains("Message 199"),
+        "newest of window: {}",
+        rows[49].content
+    );
 }
 
 // ── FTS5 search latency ───────────────────────────────────────────────────────
@@ -88,7 +117,10 @@ async fn fts5_search_finds_needle_in_100_messages() {
         .await
         .expect("save");
 
-    let results = store.search_messages("unique_needle_xq9", 5).await.expect("search");
+    let results = store
+        .search_messages("unique_needle_xq9", 5)
+        .await
+        .expect("search");
     assert_eq!(results.len(), 1, "should find exactly the needle");
     assert!(results[0].content.contains("unique_needle_xq9"));
 }
@@ -103,7 +135,11 @@ async fn context_builder_stays_under_token_budget() {
     // Insert 100 messages (~40 chars each → ~10 tokens each → 1000 tokens total).
     for i in 0..100 {
         store
-            .save_message("ctx-session", "user", &format!("message content number {i} here"))
+            .save_message(
+                "ctx-session",
+                "user",
+                &format!("message content number {i} here"),
+            )
             .await
             .expect("save");
     }

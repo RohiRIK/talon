@@ -2,7 +2,7 @@ use std::{future::Future, pin::Pin};
 
 use reqwest::Client;
 
-use crate::{openai_compat, LlmError, LlmProvider, LlmResponse, Message};
+use crate::{LlmError, LlmProvider, LlmResponse, Message, openai_compat};
 
 /// Auth: `GITHUB_TOKEN` env → `gh auth token` CLI. Default model: `claude-sonnet-4-5`.
 pub struct GitHubCopilotProvider {
@@ -17,9 +17,13 @@ impl GitHubCopilotProvider {
 
     pub fn new() -> Result<Self, LlmError> {
         let token = Self::resolve_token()?;
-        let model = std::env::var("TALON_LLM_MODEL")
-            .unwrap_or_else(|_| Self::DEFAULT_MODEL.to_string());
-        Ok(Self { client: Client::new(), token, model })
+        let model =
+            std::env::var("TALON_LLM_MODEL").unwrap_or_else(|_| Self::DEFAULT_MODEL.to_string());
+        Ok(Self {
+            client: Client::new(),
+            token,
+            model,
+        })
     }
 
     fn resolve_token() -> Result<String, LlmError> {
@@ -143,8 +147,7 @@ mod tests {
         unsafe {
             std::env::set_var("GITHUB_TOKEN", "gho_dummy");
         }
-        let provider: Arc<dyn LlmProvider> =
-            Arc::new(GitHubCopilotProvider::new().expect("new"));
+        let provider: Arc<dyn LlmProvider> = Arc::new(GitHubCopilotProvider::new().expect("new"));
         unsafe {
             std::env::remove_var("GITHUB_TOKEN");
         }
@@ -179,15 +182,15 @@ mod tests {
             Err(_) => return, // no token available in this environment
         };
         let messages = vec![Message::user("Say hello in one word.")];
-        let resp = tokio::time::timeout(
-            Duration::from_secs(30),
-            provider.complete(&messages, &[]),
-        )
-        .await
-        .expect("timed out after 30s")
-        .expect("complete failed");
+        let resp = tokio::time::timeout(Duration::from_secs(30), provider.complete(&messages, &[]))
+            .await
+            .expect("timed out after 30s")
+            .expect("complete failed");
 
-        assert!(!resp.content.is_empty(), "response must have at least one content block");
+        assert!(
+            !resp.content.is_empty(),
+            "response must have at least one content block"
+        );
         let has_text = resp
             .content
             .iter()

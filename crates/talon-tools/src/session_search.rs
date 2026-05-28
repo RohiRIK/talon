@@ -65,9 +65,7 @@ impl Tool for SessionSearchTool {
             let limit = args["limit"].as_u64().unwrap_or(5) as usize;
 
             match store.search_messages(&query, limit).await {
-                Ok(msgs) if msgs.is_empty() => {
-                    ToolResult::ok("No matching messages found.")
-                }
+                Ok(msgs) if msgs.is_empty() => ToolResult::ok("No matching messages found."),
                 Ok(msgs) => {
                     let lines: Vec<String> = msgs
                         .iter()
@@ -136,7 +134,10 @@ mod tests {
     async fn execute_no_results_returns_no_match_message() {
         let tool = make_tool().await;
         let result = tool
-            .execute(json!({"query": "xyzzy_nonexistent"}), ToolContext::default())
+            .execute(
+                json!({"query": "xyzzy_nonexistent"}),
+                ToolContext::default(),
+            )
             .await;
         assert!(!result.is_error);
         assert!(result.content.contains("No matching"));
@@ -153,7 +154,10 @@ mod tests {
         let tool = SessionSearchTool::new(store);
 
         let result = tool
-            .execute(json!({"query": "memory", "limit": 5}), ToolContext::default())
+            .execute(
+                json!({"query": "memory", "limit": 5}),
+                ToolContext::default(),
+            )
             .await;
         assert!(!result.is_error, "unexpected error: {}", result.content);
         assert!(result.content.contains("Rust memory safety"));

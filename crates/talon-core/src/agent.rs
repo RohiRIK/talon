@@ -48,11 +48,7 @@ impl Agent {
     ///
     /// State transitions: Idle → Thinking → (CallingTool → Thinking)* → Completed | Failed
     #[instrument(skip(self), fields(session_id = %session_id))]
-    pub async fn run(
-        &mut self,
-        session_id: &str,
-        user_message: String,
-    ) -> Result<(), CoreError> {
+    pub async fn run(&mut self, session_id: &str, user_message: String) -> Result<(), CoreError> {
         let membrane = ApprovalMembrane::new(self.events.clone());
         let tool_schemas = self.dispatcher.schemas();
         let mut state = AgentState::Idle;
@@ -73,7 +69,9 @@ impl Agent {
                 self.provider.complete(&messages, &tool_schemas),
             )
             .await
-            .map_err(|_| CoreError::Timeout { secs: LLM_TIMEOUT_SECS })?
+            .map_err(|_| CoreError::Timeout {
+                secs: LLM_TIMEOUT_SECS,
+            })?
             .map_err(|e| CoreError::Llm(e.to_string()))?;
 
             self.emit(AgentEvent::LlmResponse).await;
@@ -81,7 +79,8 @@ impl Agent {
             let assistant_json = serde_json::to_value(&response.content)
                 .map_err(|e| CoreError::InvalidState(e.to_string()))?;
             messages.push(Message::assistant(assistant_json.clone()));
-            self.persist(session_id, "assistant", &assistant_json.to_string()).await;
+            self.persist(session_id, "assistant", &assistant_json.to_string())
+                .await;
 
             // Collect tool calls from this response.
             let tool_calls: Vec<(String, String, serde_json::Value)> = response
@@ -134,10 +133,9 @@ impl Agent {
                     }])
                     .await?;
 
-                let result = tool_results
-                    .into_iter()
-                    .next()
-                    .unwrap_or_else(|| crate::tools::ToolResult::err("dispatcher returned no result"));
+                let result = tool_results.into_iter().next().unwrap_or_else(|| {
+                    crate::tools::ToolResult::err("dispatcher returned no result")
+                });
 
                 self.emit(AgentEvent::ToolResult {
                     id: id.clone(),
@@ -266,13 +264,18 @@ mod tests {
                 stop_reason: "tool_use".to_string(),
             },
             LlmResponse {
-                content: vec![ContentBlock::Text { text: "done".to_string() }],
+                content: vec![ContentBlock::Text {
+                    text: "done".to_string(),
+                }],
                 stop_reason: "end_turn".to_string(),
             },
         ]));
 
         let mut agent = Agent::new(provider, make_dispatcher(), tx);
-        agent.run("sess-2", "use echo".to_string()).await.expect("run");
+        agent
+            .run("sess-2", "use echo".to_string())
+            .await
+            .expect("run");
 
         let events: Vec<_> = {
             let mut v = Vec::new();
@@ -281,8 +284,16 @@ mod tests {
             }
             v
         };
-        assert!(events.iter().any(|e| matches!(e, AgentEvent::ToolCalled { .. })));
-        assert!(events.iter().any(|e| matches!(e, AgentEvent::ToolResult { .. })));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::ToolCalled { .. }))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::ToolResult { .. }))
+        );
         assert!(events.iter().any(|e| matches!(e, AgentEvent::Completed)));
     }
 
@@ -293,9 +304,11 @@ mod tests {
         let db = Arc::new(talon_memory::Database::open(":memory:").expect("db"));
         db.init_schema().await.expect("schema");
 
-        let mut agent =
-            Agent::new(provider, make_dispatcher(), tx).with_db(Arc::clone(&db));
-        agent.run("sess-3", "save me".to_string()).await.expect("run");
+        let mut agent = Agent::new(provider, make_dispatcher(), tx).with_db(Arc::clone(&db));
+        agent
+            .run("sess-3", "save me".to_string())
+            .await
+            .expect("run");
 
         let count: i64 = db
             .pool()
@@ -312,7 +325,10 @@ mod tests {
             .await
             .expect("interact")
             .expect("count");
-        assert!(count >= 2, "expected at least user + assistant messages, got {count}");
+        assert!(
+            count >= 2,
+            "expected at least user + assistant messages, got {count}"
+        );
     }
 
     #[tokio::test]
@@ -323,7 +339,8 @@ mod tests {
                 &'a self,
                 _messages: &'a [Message],
                 _tools: &'a [Value],
-            ) -> Pin<Box<dyn Future<Output = Result<LlmResponse, LlmError>> + Send + 'a>> {
+            ) -> Pin<Box<dyn Future<Output = Result<LlmResponse, LlmError>> + Send + 'a>>
+            {
                 Box::pin(async { Err(LlmError::AuthFailed) })
             }
         }
@@ -358,11 +375,16 @@ mod tests {
         let (tx, mut rx) = make_channel();
         let provider = Arc::new(MockProvider::text("answer", "end_turn"));
         let mut agent = Agent::new(provider, make_dispatcher(), tx);
-        agent.run("sess-6", "question".to_string()).await.expect("run");
+        agent
+            .run("sess-6", "question".to_string())
+            .await
+            .expect("run");
 
         let events: Vec<_> = {
             let mut v = Vec::new();
-            while let Ok(e) = rx.try_recv() { v.push(e); }
+            while let Ok(e) = rx.try_recv() {
+                v.push(e);
+            }
             v
         };
         assert!(events.iter().any(|e| matches!(e, AgentEvent::LlmRequest)));
@@ -389,23 +411,42 @@ mod tests {
                 stop_reason: "tool_use".to_string(),
             },
             LlmResponse {
-                content: vec![ContentBlock::Text { text: "both done".to_string() }],
+                content: vec![ContentBlock::Text {
+                    text: "both done".to_string(),
+                }],
                 stop_reason: "end_turn".to_string(),
             },
         ]));
 
         let mut agent = Agent::new(provider, make_dispatcher(), tx);
-        agent.run("sess-7", "two tools".to_string()).await.expect("run");
+        agent
+            .run("sess-7", "two tools".to_string())
+            .await
+            .expect("run");
 
         let events: Vec<_> = {
             let mut v = Vec::new();
-            while let Ok(e) = rx.try_recv() { v.push(e); }
+            while let Ok(e) = rx.try_recv() {
+                v.push(e);
+            }
             v
         };
-        let tool_called_count = events.iter().filter(|e| matches!(e, AgentEvent::ToolCalled { .. })).count();
-        let tool_result_count = events.iter().filter(|e| matches!(e, AgentEvent::ToolResult { .. })).count();
-        assert_eq!(tool_called_count, 2, "expected 2 ToolCalled events, got {tool_called_count}");
-        assert_eq!(tool_result_count, 2, "expected 2 ToolResult events, got {tool_result_count}");
+        let tool_called_count = events
+            .iter()
+            .filter(|e| matches!(e, AgentEvent::ToolCalled { .. }))
+            .count();
+        let tool_result_count = events
+            .iter()
+            .filter(|e| matches!(e, AgentEvent::ToolResult { .. }))
+            .count();
+        assert_eq!(
+            tool_called_count, 2,
+            "expected 2 ToolCalled events, got {tool_called_count}"
+        );
+        assert_eq!(
+            tool_result_count, 2,
+            "expected 2 ToolResult events, got {tool_result_count}"
+        );
         assert!(events.iter().any(|e| matches!(e, AgentEvent::Completed)));
     }
 
@@ -422,7 +463,9 @@ mod tests {
 
         let events: Vec<_> = {
             let mut v = Vec::new();
-            while let Ok(e) = rx.try_recv() { v.push(e); }
+            while let Ok(e) = rx.try_recv() {
+                v.push(e);
+            }
             v
         };
         assert!(events.iter().any(|e| matches!(e, AgentEvent::Completed)));

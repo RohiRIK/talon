@@ -101,7 +101,10 @@ impl<'a> ContextBuilder<'a> {
         }
 
         // 3. Recent messages for this session.
-        let recent = self.store.recent_messages(self.session_id, self.recent_n).await?;
+        let recent = self
+            .store
+            .recent_messages(self.session_id, self.recent_n)
+            .await?;
 
         // 4. Assemble under token budget (rough estimate: 1 token ≈ 4 chars).
         let mut budget = self.max_tokens;
@@ -138,9 +141,17 @@ impl<'a> ContextBuilder<'a> {
         recent_filtered.reverse();
         messages.extend(recent_filtered);
 
-        let estimated_tokens = system_tokens + messages.iter().map(|m| estimate_tokens(&m.content)).sum::<usize>();
+        let estimated_tokens = system_tokens
+            + messages
+                .iter()
+                .map(|m| estimate_tokens(&m.content))
+                .sum::<usize>();
 
-        Ok(BuiltContext { system, messages, estimated_tokens })
+        Ok(BuiltContext {
+            system,
+            messages,
+            estimated_tokens,
+        })
     }
 }
 
@@ -199,8 +210,14 @@ mod tests {
     #[tokio::test]
     async fn recent_messages_appear_in_context() {
         let store = make_store().await;
-        store.save_message("s2", "user", "hello").await.expect("save");
-        store.save_message("s2", "assistant", "world").await.expect("save");
+        store
+            .save_message("s2", "user", "hello")
+            .await
+            .expect("save");
+        store
+            .save_message("s2", "assistant", "world")
+            .await
+            .expect("save");
 
         let ctx = ContextBuilder::new(store.as_ref(), "s2")
             .build()
@@ -217,7 +234,10 @@ mod tests {
         let store = make_store().await;
         // 100 messages × "word " (5 chars ≈ 2 tokens each) = ~200 tokens total.
         for i in 0..100 {
-            store.save_message("s3", "user", &format!("word {i}")).await.expect("save");
+            store
+                .save_message("s3", "user", &format!("word {i}"))
+                .await
+                .expect("save");
         }
         // Budget of 50 tokens should include far fewer than 100 messages.
         let ctx = ContextBuilder::new(store.as_ref(), "s3")
@@ -232,13 +252,20 @@ mod tests {
             "budget should have dropped older messages, got {}",
             ctx.messages.len()
         );
-        assert!(ctx.estimated_tokens <= 50, "estimated_tokens={}", ctx.estimated_tokens);
+        assert!(
+            ctx.estimated_tokens <= 50,
+            "estimated_tokens={}",
+            ctx.estimated_tokens
+        );
     }
 
     #[tokio::test]
     async fn fts_hits_deduped_against_recent() {
         let store = make_store().await;
-        store.save_message("s4", "user", "search me please").await.expect("save");
+        store
+            .save_message("s4", "user", "search me please")
+            .await
+            .expect("save");
 
         let ctx = ContextBuilder::new(store.as_ref(), "s4")
             .fts_query("search")
@@ -248,7 +275,11 @@ mod tests {
             .expect("build");
 
         // The message appears once (in recent), not twice.
-        let count = ctx.messages.iter().filter(|m| m.content == "search me please").count();
+        let count = ctx
+            .messages
+            .iter()
+            .filter(|m| m.content == "search me please")
+            .count();
         assert_eq!(count, 1, "message should appear exactly once; got {count}");
     }
 

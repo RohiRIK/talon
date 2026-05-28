@@ -1,5 +1,5 @@
-use std::fmt;
 use serde_json::Value;
+use std::fmt;
 use tokio::sync::oneshot;
 
 /// Agent lifecycle events emitted on the broadcast channel.
@@ -51,9 +51,7 @@ impl fmt::Debug for AgentEvent {
                 .field("is_error", is_error)
                 .finish_non_exhaustive(),
             Self::ApprovalRequested {
-                call_id,
-                tool_name,
-                ..
+                call_id, tool_name, ..
             } => f
                 .debug_struct("AgentEvent::ApprovalRequested")
                 .field("call_id", call_id)

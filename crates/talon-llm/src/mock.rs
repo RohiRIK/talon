@@ -110,11 +110,15 @@ mod tests {
     async fn mock_provider_returns_multiple_responses_in_order() {
         let p = MockProvider::new(vec![
             LlmResponse {
-                content: vec![ContentBlock::Text { text: "first".to_string() }],
+                content: vec![ContentBlock::Text {
+                    text: "first".to_string(),
+                }],
                 stop_reason: "end_turn".to_string(),
             },
             LlmResponse {
-                content: vec![ContentBlock::Text { text: "second".to_string() }],
+                content: vec![ContentBlock::Text {
+                    text: "second".to_string(),
+                }],
                 stop_reason: "end_turn".to_string(),
             },
         ]);

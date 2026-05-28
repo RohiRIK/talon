@@ -9,8 +9,8 @@ use std::sync::Arc;
 use talon_core::agent::Agent;
 use talon_core::approval::ApprovalLevel;
 use talon_core::events::AgentEvent;
-use talon_core::tools::{Tool, ToolContext, ToolResult};
 use talon_core::tools::dispatcher::ToolDispatcher;
+use talon_core::tools::{Tool, ToolContext, ToolResult};
 use talon_llm::{AnthropicProvider, LlmProvider};
 use talon_memory::{Database, SqliteStore};
 use talon_tools::SessionSearchTool;
@@ -301,7 +301,12 @@ async fn run_agent(api_key: String, user_message: String) -> Result<()> {
     let printer = tokio::spawn(async move {
         while let Some(event) = event_rx.recv().await {
             match event {
-                AgentEvent::ApprovalRequested { tool_name, args, tx, .. } => {
+                AgentEvent::ApprovalRequested {
+                    tool_name,
+                    args,
+                    tx,
+                    ..
+                } => {
                     eprint!("[talon] approve {tool_name}({args})? [y/n]: ");
                     io::stderr().flush().ok();
                     let mut answer = String::new();
@@ -309,7 +314,9 @@ async fn run_agent(api_key: String, user_message: String) -> Result<()> {
                     let approved = answer.trim().eq_ignore_ascii_case("y");
                     tx.send(approved).ok();
                 }
-                AgentEvent::ToolResult { content, is_error, .. } => {
+                AgentEvent::ToolResult {
+                    content, is_error, ..
+                } => {
                     if is_error {
                         tracing::warn!("tool error: {content}");
                     } else {
@@ -757,7 +764,9 @@ mod tests {
 
     #[tokio::test]
     async fn echo_tool_returns_message() {
-        let result = EchoTool.execute(json!({ "message": "hi" }), ToolContext::default()).await;
+        let result = EchoTool
+            .execute(json!({ "message": "hi" }), ToolContext::default())
+            .await;
         assert!(!result.is_error);
         assert_eq!(result.content, "hi");
     }
@@ -789,7 +798,10 @@ mod tests {
     #[tokio::test]
     async fn read_file_tool_errors_on_missing_file() {
         let result = ReadFileTool
-            .execute(json!({ "path": "/nonexistent/path/xyz.txt" }), ToolContext::default())
+            .execute(
+                json!({ "path": "/nonexistent/path/xyz.txt" }),
+                ToolContext::default(),
+            )
             .await;
         assert!(result.is_error);
         assert!(result.content.contains("Failed to read"));
@@ -806,7 +818,9 @@ mod tests {
 
     #[tokio::test]
     async fn read_file_tool_errors_on_missing_path_arg() {
-        let result = ReadFileTool.execute(json!({}), ToolContext::default()).await;
+        let result = ReadFileTool
+            .execute(json!({}), ToolContext::default())
+            .await;
         assert!(result.is_error);
         assert!(result.content.contains("Missing required argument"));
     }

@@ -2,7 +2,7 @@ use std::{future::Future, pin::Pin};
 
 use reqwest::Client;
 
-use crate::{openai_compat, LlmError, LlmProvider, LlmResponse, Message};
+use crate::{LlmError, LlmProvider, LlmResponse, Message, openai_compat};
 
 /// Auth: `GEMINI_API_KEY` env → `GOOGLE_API_KEY` env → `agy auth token` CLI.
 /// Default model: `gemini-3.5-flash`.
@@ -21,9 +21,13 @@ impl AntigravityProvider {
 
     pub fn new() -> Result<Self, LlmError> {
         let token = Self::resolve_token()?;
-        let model = std::env::var("TALON_LLM_MODEL")
-            .unwrap_or_else(|_| Self::DEFAULT_MODEL.to_string());
-        Ok(Self { client: Client::new(), token, model })
+        let model =
+            std::env::var("TALON_LLM_MODEL").unwrap_or_else(|_| Self::DEFAULT_MODEL.to_string());
+        Ok(Self {
+            client: Client::new(),
+            token,
+            model,
+        })
     }
 
     fn resolve_token() -> Result<String, LlmError> {

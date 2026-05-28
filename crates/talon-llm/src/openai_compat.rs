@@ -37,9 +37,7 @@ pub(crate) fn build_body(
 
 /// Consume a response and return an error for non-2xx status codes.
 #[cfg_attr(not(feature = "github-copilot-provider"), allow(dead_code))]
-pub(crate) async fn check_status(
-    resp: reqwest::Response,
-) -> Result<reqwest::Response, LlmError> {
+pub(crate) async fn check_status(resp: reqwest::Response) -> Result<reqwest::Response, LlmError> {
     let status = resp.status();
     if status.is_success() {
         return Ok(resp);
@@ -70,14 +68,16 @@ pub(crate) fn parse_response(raw: RawResponse) -> Result<LlmResponse, LlmError> 
 
     let mut content: Vec<ContentBlock> = Vec::new();
 
-    if let Some(text) = choice.message.content && !text.is_empty() {
+    if let Some(text) = choice.message.content
+        && !text.is_empty()
+    {
         content.push(ContentBlock::Text { text });
     }
 
     if let Some(tool_calls) = choice.message.tool_calls {
         for tc in tool_calls {
-            let input = serde_json::from_str(&tc.function.arguments)
-                .unwrap_or(serde_json::Value::Null);
+            let input =
+                serde_json::from_str(&tc.function.arguments).unwrap_or(serde_json::Value::Null);
             content.push(ContentBlock::ToolUse {
                 id: tc.id,
                 name: tc.function.name,
@@ -86,7 +86,10 @@ pub(crate) fn parse_response(raw: RawResponse) -> Result<LlmResponse, LlmError> 
         }
     }
 
-    Ok(LlmResponse { content, stop_reason })
+    Ok(LlmResponse {
+        content,
+        stop_reason,
+    })
 }
 
 // ── Deserialization types ─────────────────────────────────────────────────────
@@ -139,7 +142,10 @@ mod tests {
     fn build_body_omits_tools_key_when_empty() {
         use crate::Message;
         let body = build_body("m", &[Message::user("x")], &[]);
-        assert!(body.get("tools").is_none(), "tools should be absent when empty");
+        assert!(
+            body.get("tools").is_none(),
+            "tools should be absent when empty"
+        );
     }
 
     #[test]
@@ -162,7 +168,10 @@ mod tests {
         let raw = RawResponse {
             choices: vec![Choice {
                 finish_reason: Some("stop".to_string()),
-                message: RawMessage { content: Some("hi".to_string()), tool_calls: None },
+                message: RawMessage {
+                    content: Some("hi".to_string()),
+                    tool_calls: None,
+                },
             }],
         };
         let r = parse_response(raw).expect("parse");
@@ -196,7 +205,10 @@ mod tests {
         let raw = RawResponse {
             choices: vec![Choice {
                 finish_reason: None,
-                message: RawMessage { content: Some("x".to_string()), tool_calls: None },
+                message: RawMessage {
+                    content: Some("x".to_string()),
+                    tool_calls: None,
+                },
             }],
         };
         let r = parse_response(raw).expect("parse");
@@ -208,7 +220,10 @@ mod tests {
         let raw = RawResponse {
             choices: vec![Choice {
                 finish_reason: Some("max_tokens".to_string()),
-                message: RawMessage { content: None, tool_calls: None },
+                message: RawMessage {
+                    content: None,
+                    tool_calls: None,
+                },
             }],
         };
         let r = parse_response(raw).expect("parse");
@@ -220,11 +235,17 @@ mod tests {
         let raw = RawResponse {
             choices: vec![Choice {
                 finish_reason: Some("stop".to_string()),
-                message: RawMessage { content: Some(String::new()), tool_calls: None },
+                message: RawMessage {
+                    content: Some(String::new()),
+                    tool_calls: None,
+                },
             }],
         };
         let r = parse_response(raw).expect("parse");
-        assert!(r.content.is_empty(), "empty text should not produce a content block");
+        assert!(
+            r.content.is_empty(),
+            "empty text should not produce a content block"
+        );
     }
 
     #[test]

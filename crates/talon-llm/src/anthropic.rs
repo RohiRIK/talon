@@ -129,8 +129,8 @@ mod tests {
     /// This is the Type #4 dyn-compatibility check analogous to Arc<dyn Tool>.
     #[test]
     fn arc_dyn_llm_provider_is_constructible() {
-        use std::sync::Arc;
         use crate::LlmProvider;
+        use std::sync::Arc;
         let provider: Arc<dyn LlmProvider> = Arc::new(AnthropicProvider::new("key".to_string()));
         // If this compiles, the trait is dyn-compatible — the test body is the assertion.
         let _ = provider;
