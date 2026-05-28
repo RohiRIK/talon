@@ -246,7 +246,7 @@ docker build -t talon:0 .
 - [x] 0.5.2 `AnthropicProvider` quick-and-dirty impl: `reqwest::post`, parse `content[0].text`
 - [x] 0.5.3 Inline agent loop: LLM → if tool_use block → execute → feed result back → loop until stop
 - [x] 0.5.4 Inline `ApprovalLevel` check: `Dangerous` tools print "approve? [y/n]" to stderr
-- [ ] 0.5.5 Test: `cargo run -- --message "read ./Cargo.toml and tell me the edition"` — must work end-to-end
+- [x] 0.5.5 Test: `cargo run -- --message "read ./Cargo.toml and tell me the edition"` — must work end-to-end
 - [x] 0.5.6 Identify any type shape that felt wrong during implementation; record in `docs/ADR/0007-prototype-learnings.md`
 - [x] 0.5.7 Once prototype passes the manual test, promote the 7 types to their final crate homes
 
@@ -313,11 +313,12 @@ sqlite3 ~/.talon/talon.db 'SELECT content FROM messages ORDER BY id DESC LIMIT 1
 > `openai_compat.rs`; Anthropic-format providers inline the Messages API format.
 
 ### Tasks
-- [x] 1.5.0 `crates/talon-llm/src/github_copilot.rs` + `openai_compat.rs` — `GitHubCopilotProvider`: auth `GITHUB_TOKEN` → `gh auth token` CLI; endpoint `https://api.githubcopilot.com/chat/completions`; default model `claude-sonnet-4-5`; feature `github-copilot-provider`
+- [x] 1.5.0 `crates/talon-llm/src/github_copilot.rs` + `openai_compat.rs` — `GitHubCopilotProvider`: auth `GITHUB_TOKEN` → `gh auth token` CLI; endpoint `https://api.githubcopilot.com/chat/completions`; default model `claude-sonnet-4.6`; feature `github-copilot-provider`
 - [x] 1.5.1 `crates/talon-llm/src/codex.rs` — `CodexProvider`: auth `OPENAI_API_KEY` → `CODEX_ACCESS_TOKEN`; endpoint `https://api.openai.com/v1/chat/completions`; default model `o4-mini`; feature `codex-provider`; expand `openai_compat.rs` gate
 - [x] 1.5.2 `crates/talon-llm/src/claude_code.rs` — `ClaudeCodeProvider`: auth `CLAUDE_CODE_OAUTH_TOKEN` (Bearer) → `ANTHROPIC_AUTH_TOKEN` (Bearer) → `ANTHROPIC_API_KEY` (x-api-key) → `claude setup-token` CLI; endpoint `https://api.anthropic.com/v1/messages`; default model `claude-opus-4-7`; feature `claude-code-provider`
 - [x] 1.5.3 `crates/talon-llm/src/antigravity.rs` — `AntigravityProvider`: auth `GEMINI_API_KEY` → `GOOGLE_API_KEY` → `agy auth token` CLI; endpoint `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`; default model `gemini-3.5-flash`; feature `antigravity-provider`; expand `openai_compat.rs` gate
 - [x] 1.5.4 Unit tests for 1.5.1–1.5.3: token resolution, env override, model default, Arc<dyn LlmProvider> constructible, empty-env rejection (5–6 tests per provider)
+- [x] 1.5.5 Live smoke test for `GitHubCopilotProvider` — `#[ignore]` async test fires real Copilot API call, asserts non-empty `Text` block in response; run with `TALON_LLM_MODEL=claude-sonnet-4.5 cargo nextest run --run-ignored all -E 'test(smoke)'`; confirmed passing (3s round-trip)
 
 ### Exit Gate
 ```bash

@@ -38,8 +38,8 @@ This applies to: Talon's system prompt, tool `schema()` descriptions, `SessionSe
 
 ## Current State
 
-**Phase: 0.5 — Next.** Phase 0 complete (2026-05-27). Workspace, CI, Docker, supply-chain security, release pipeline, and all 30 scaffold tasks done. `cargo build --workspace --release` green, `docker build -t talon:0` green.
-The next action is Phase 0.5 (working prototype — EchoTool, AnthropicProvider, inline agent loop). See `PLAN.md` Phase 0.5 tasks.
+**Phase: 3 — Next.** Phases 0–2 + 1.5 complete (2026-05-28). Working prototype, core agent loop, FTS5 memory, and all additional LLM providers done. `cargo nextest run --workspace` → 219/219 green.
+The next action is Phase 3 (Tools Tier 1 — file tools, terminal sandbox, Docker/native backends, approval membrane integration). See `PLAN.md` Phase 3 tasks.
 
 ---
 
@@ -211,10 +211,10 @@ docker build -t talon:phase-N .
 | Phase | Name | Status | Exit Gate |
 |-------|------|--------|-----------|
 | 0 | Foundation | ✅ Complete (2026-05-27) | `cargo build --workspace --release` green, CI green |
-| 0.5 | Working Prototype | ⬜ Not started | `cargo run -- --message "read Cargo.toml"` works E2E |
-| 1 | Core Agent Loop | ⬜ Not started | Real LLM response, messages persisted to SQLite |
-| 1.5 | Additional LLM Providers | ✅ Complete (2026-05-28) | Codex, ClaudeCode, Antigravity providers behind feature flags, 219 tests green |
-| 2 | Memory (FTS5) | ⬜ Not started | FTS5 search <50ms, context within token budget |
+| 0.5 | Working Prototype | ✅ Complete (2026-05-27) | `cargo run -- --message "read Cargo.toml"` works E2E |
+| 1 | Core Agent Loop | ✅ Complete (2026-05-27) | Real LLM response, messages persisted to SQLite |
+| 1.5 | Additional LLM Providers | ✅ Complete (2026-05-28) | Codex, ClaudeCode, Antigravity + live smoke test, 219 tests green |
+| 2 | Memory (FTS5) | ✅ Complete (2026-05-27) | FTS5 search <50ms, context within token budget |
 | 2.5 | Talon LTM + LanceDB | ⬜ Not started | Auto fact recall across sessions |
 | 3 | Tools Tier 1 | ⬜ Not started | `rm -rf /` blocked, all file tools functional |
 | 4 | Gateway | ⬜ Not started | CLI + Telegram + HTTP all functional |
