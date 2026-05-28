@@ -2,6 +2,8 @@ use serde_json::Value;
 use std::fmt;
 use tokio::sync::oneshot;
 
+use crate::approval::ApprovalLevel;
+
 /// Agent lifecycle events emitted on the broadcast channel.
 /// Consumers (CLI, TUI, Telegram) subscribe and render accordingly.
 ///
@@ -31,6 +33,7 @@ pub enum AgentEvent {
         call_id: String,
         tool_name: String,
         args: Value,
+        approval_level: ApprovalLevel,
         tx: oneshot::Sender<bool>,
     },
     Completed,
@@ -56,11 +59,15 @@ impl fmt::Debug for AgentEvent {
                 .field("is_error", is_error)
                 .finish_non_exhaustive(),
             Self::ApprovalRequested {
-                call_id, tool_name, ..
+                call_id,
+                tool_name,
+                approval_level,
+                ..
             } => f
                 .debug_struct("AgentEvent::ApprovalRequested")
                 .field("call_id", call_id)
                 .field("tool_name", tool_name)
+                .field("approval_level", approval_level)
                 .finish_non_exhaustive(),
             Self::Completed => write!(f, "AgentEvent::Completed"),
             Self::Failed(msg) => write!(f, "AgentEvent::Failed({msg:?})"),
@@ -109,6 +116,7 @@ mod tests {
             call_id: "call-1".to_string(),
             tool_name: "rm".to_string(),
             args: serde_json::json!({}),
+            approval_level: crate::approval::ApprovalLevel::Dangerous,
             tx,
         };
         let s = format!("{ev:?}");
@@ -145,6 +153,7 @@ mod tests {
             call_id: "c".to_string(),
             tool_name: "t".to_string(),
             args: serde_json::json!({}),
+            approval_level: crate::approval::ApprovalLevel::NeedsApproval,
             tx,
         };
         // Extract tx and send approval
@@ -162,6 +171,7 @@ mod tests {
             call_id: "c2".to_string(),
             tool_name: "rm_rf".to_string(),
             args: serde_json::json!({}),
+            approval_level: crate::approval::ApprovalLevel::Dangerous,
             tx,
         };
         if let AgentEvent::ApprovalRequested { tx, .. } = ev {

@@ -40,6 +40,7 @@ impl ApprovalMembrane {
                         call_id,
                         tool_name: tool_name.to_string(),
                         args: args.clone(),
+                        approval_level: level,
                         tx,
                     })
                     .await
@@ -198,5 +199,60 @@ mod tests {
             )
             .await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn membrane_emits_approval_level_in_event() {
+        let (tx, mut rx) = mpsc::channel(8);
+        let membrane = ApprovalMembrane::new(tx);
+
+        tokio::spawn(async move {
+            if let Some(AgentEvent::ApprovalRequested {
+                tx,
+                approval_level,
+                ..
+            }) = rx.recv().await
+            {
+                assert_eq!(approval_level, ApprovalLevel::Dangerous);
+                tx.send(true).expect("send");
+            }
+        });
+
+        membrane
+            .check(
+                "c6".to_string(),
+                "rm_rf",
+                &serde_json::json!({}),
+                ApprovalLevel::Dangerous,
+            )
+            .await
+            .expect("approved");
+    }
+
+    #[tokio::test]
+    async fn membrane_needs_approval_carries_level_in_event() {
+        let (tx, mut rx) = mpsc::channel(8);
+        let membrane = ApprovalMembrane::new(tx);
+
+        tokio::spawn(async move {
+            if let Some(AgentEvent::ApprovalRequested {
+                tx,
+                approval_level,
+                ..
+            }) = rx.recv().await
+            {
+                assert_eq!(approval_level, ApprovalLevel::NeedsApproval);
+                tx.send(false).expect("send");
+            }
+        });
+
+        let _ = membrane
+            .check(
+                "c7".to_string(),
+                "write_file",
+                &serde_json::json!({}),
+                ApprovalLevel::NeedsApproval,
+            )
+            .await;
     }
 }

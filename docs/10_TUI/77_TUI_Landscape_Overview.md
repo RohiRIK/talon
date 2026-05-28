@@ -103,19 +103,19 @@
 ```
 ┌──────────────────────────────────────────────────┐
 │  Talon TUI Architecture                          │
-│                                                   │
+│                                                  │
 │  ┌─────────────────────────────────────────────┐ │
-│  │              MVU Event Loop                  │ │
-│  │  Init() → Update(Msg) → View(Frame) → ...  │ │
+│  │              MVU Event Loop                 │ │
+│  │  Init() → Update(Msg) → View(Frame) → ...   │ │
 │  └─────────────────────┬───────────────────────┘ │
-│                        │                          │
+│                        │                         │
 │  ┌─────────┐  ┌────────▼────────┐  ┌───────────┐ │
 │  │ Async   │  │   Ratatui       │  │ Crossterm │ │
 │  │ Channels│──│   Rendering     │──│ Backend   │ │
 │  │ (tokio) │  │   (immediate)   │  │           │ │
 │  └─────────┘  └─────────────────┘  └───────────┘ │
-│                                                   │
-│  Components:                                      │
+│                                                  │
+│  Components:                                     │
 │  ├── ChatView (streaming markdown + code blocks) │
 │  ├── InputBar (multi-line, history, autocomplete)│
 │  ├── ToolPanel (execution status, output)        │

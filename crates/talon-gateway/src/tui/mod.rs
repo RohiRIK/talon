@@ -284,6 +284,7 @@ fn handle_agent_event(event: AgentEvent, app: App) -> App {
             tool_name,
             args,
             tx,
+            ..
         } => app.update(Msg::ApprovalRequested {
             call_id,
             tool_name,

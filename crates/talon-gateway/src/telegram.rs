@@ -9,10 +9,11 @@ use teloxide::{
     Bot,
     dispatching::UpdateFilterExt,
     prelude::*,
-    types::{Message as TgMessage, Update},
+    types::{CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage, ParseMode, Update},
 };
 use tokio::sync::{RwLock, mpsc};
 
+use talon_core::approval::ApprovalLevel;
 use talon_core::events::AgentEvent;
 
 use crate::{Gateway, GatewayContext, GatewayError, RenderMode, normalize::normalize_markdown};
@@ -99,6 +100,42 @@ fn talon_home() -> PathBuf {
     PathBuf::from(home).join(".talon")
 }
 
+// ── Tool progress helpers ──────────────────────────────────────────────────────
+
+/// Map from call_id to the oneshot sender awaiting a user approval decision.
+type PendingApprovals =
+    Arc<tokio::sync::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<bool>>>>;
+
+/// Format a brief status line for a tool call, e.g. "🔧 `read_file` · /etc/hostname".
+fn format_tool_status(tool_name: &str, args: &serde_json::Value) -> String {
+    let primary = ["path", "command", "message", "query", "pattern"]
+        .iter()
+        .find_map(|k| args.get(*k).and_then(|v| v.as_str()))
+        .unwrap_or("");
+    if primary.is_empty() {
+        format!("🔧 `{tool_name}`")
+    } else {
+        format!("🔧 `{tool_name}` · {primary}")
+    }
+}
+
+/// Encode an inline-keyboard callback payload: "approve:<call_id>" or "deny:<call_id>".
+/// Telegram limits callback_data to 64 bytes.
+fn approval_callback_data(approved: bool, call_id: &str) -> String {
+    let prefix = if approved { "approve" } else { "deny" };
+    format!("{prefix}:{call_id}")
+}
+
+/// Decode a callback payload produced by [`approval_callback_data`].
+fn parse_callback_data(data: &str) -> Option<(bool, String)> {
+    let (action, id) = data.split_once(':')?;
+    match action {
+        "approve" => Some((true, id.to_string())),
+        "deny" => Some((false, id.to_string())),
+        _ => None,
+    }
+}
+
 // ── Gateway ───────────────────────────────────────────────────────────────────
 
 /// Telegram gateway using long-polling.
@@ -145,13 +182,17 @@ impl Gateway for TelegramGateway {
             let bot = Bot::new(&self.token);
             let ctx = Arc::clone(&self.ctx);
             let auth = Arc::new(UserAuth::load());
+            let pending: PendingApprovals =
+                Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
             tracing::info!("Telegram gateway starting (long-polling)…");
 
-            let handler = Update::filter_message().endpoint(
+            let msg_handler = Update::filter_message().endpoint({
+                let pending = Arc::clone(&pending);
                 move |bot: Bot, msg: TgMessage| {
                     let ctx = Arc::clone(&ctx);
                     let auth = Arc::clone(&auth);
+                    let pending = Arc::clone(&pending);
                     async move {
                         // Non-text messages (stickers, photos, etc.) are silently ignored.
                         let text = match msg.text() {
@@ -167,7 +208,7 @@ impl Gateway for TelegramGateway {
                                 bot.send_message(
                                     chat_id,
                                     format!(
-                                        "Welcome! Your Telegram ID `{user_id}` is now \
+                                        "Welcome! Your Telegram ID {user_id} is now \
                                          registered as the bot owner. Only you can use \
                                          this assistant."
                                     ),
@@ -175,14 +216,18 @@ impl Gateway for TelegramGateway {
                                 .await
                                 .map_err(|e| tracing::warn!("send error: {e}"))
                                 .ok();
-                                let response = run_telegram_turn(ctx, chat_id, text).await;
+                                let response =
+                                    run_telegram_turn(ctx, chat_id, text, bot.clone(), pending)
+                                        .await;
                                 bot.send_message(chat_id, response)
                                     .await
                                     .map_err(|e| tracing::warn!("send error: {e}"))
                                     .ok();
                             }
                             AuthResult::Allowed => {
-                                let response = run_telegram_turn(ctx, chat_id, text).await;
+                                let response =
+                                    run_telegram_turn(ctx, chat_id, text, bot.clone(), pending)
+                                        .await;
                                 bot.send_message(chat_id, response)
                                     .await
                                     .map_err(|e| tracing::warn!("send error: {e}"))
@@ -200,8 +245,49 @@ impl Gateway for TelegramGateway {
                         }
                         respond(())
                     }
-                },
-            );
+                }
+            });
+
+            let callback_handler = Update::filter_callback_query().endpoint({
+                let pending = Arc::clone(&pending);
+                move |bot: Bot, q: CallbackQuery| {
+                    let pending = Arc::clone(&pending);
+                    async move {
+                        // Ack the button press immediately so Telegram stops the spinner.
+                        bot.answer_callback_query(&q.id)
+                            .await
+                            .map_err(|e| tracing::warn!("answer_callback_query error: {e}"))
+                            .ok();
+
+                        let data = match q.data.as_deref() {
+                            Some(d) => d,
+                            None => return respond(()),
+                        };
+
+                        if let Some((approved, call_id)) = parse_callback_data(data) {
+                            let tx = pending.lock().await.remove(&call_id);
+                            if let Some(tx) = tx {
+                                tx.send(approved).ok();
+                                let label = if approved { "✅ Approved" } else { "❌ Denied" };
+                                if let Some(msg) = q.message {
+                                    bot.edit_message_text(msg.chat().id, msg.id(), label)
+                                        .await
+                                        .map_err(|e| tracing::warn!("edit_message error: {e}"))
+                                        .ok();
+                                }
+                            } else {
+                                tracing::warn!("callback for unknown call_id={call_id}");
+                            }
+                        }
+
+                        respond(())
+                    }
+                }
+            });
+
+            let handler = dptree::entry()
+                .branch(msg_handler)
+                .branch(callback_handler);
 
             Dispatcher::builder(bot, handler)
                 .enable_ctrlc_handler()
@@ -218,18 +304,62 @@ async fn run_telegram_turn(
     ctx: Arc<GatewayContext>,
     chat_id: ChatId,
     text: String,
+    bot: Bot,
+    pending: PendingApprovals,
 ) -> String {
-    let session_id = format!("tg-{}", chat_id);
+    let session_id = format!("tg-{chat_id}");
     let (event_tx, mut event_rx) = mpsc::channel::<AgentEvent>(64);
 
+    let bot_c = bot.clone();
+    let pending_c = Arc::clone(&pending);
     let collector = tokio::spawn(async move {
         let mut last_text = String::new();
         while let Some(event) = event_rx.recv().await {
             match event {
                 AgentEvent::Text { content } => last_text = content,
-                AgentEvent::ApprovalRequested { tx, .. } => {
-                    // Telegram auto-denies Dangerous tools for security.
-                    tx.send(false).ok();
+                AgentEvent::ToolCalled { ref name, ref args, .. } => {
+                    let status = format_tool_status(name, args);
+                    bot_c
+                        .send_message(chat_id, status)
+                        .await
+                        .map_err(|e| tracing::warn!("send_message error: {e}"))
+                        .ok();
+                }
+                AgentEvent::ApprovalRequested {
+                    call_id,
+                    tool_name,
+                    args,
+                    approval_level,
+                    tx,
+                } => {
+                    match approval_level {
+                        ApprovalLevel::Safe => {
+                            tx.send(true).ok();
+                        }
+                        ApprovalLevel::NeedsApproval | ApprovalLevel::Dangerous => {
+                            let label = if approval_level == ApprovalLevel::Dangerous {
+                                "⚠️ *Dangerous* tool requested"
+                            } else {
+                                "🔒 Approval needed"
+                            };
+                            let status = format_tool_status(&tool_name, &args);
+                            let prompt = format!("{label}\n{status}");
+                            let keyboard = InlineKeyboardMarkup::new(vec![vec![
+                                InlineKeyboardButton::callback("✅ Approve", approval_callback_data(true, &call_id)),
+                                InlineKeyboardButton::callback("❌ Deny", approval_callback_data(false, &call_id)),
+                            ]]);
+
+                            pending_c.lock().await.insert(call_id, tx);
+
+                            bot_c
+                                .send_message(chat_id, prompt)
+                                .parse_mode(ParseMode::MarkdownV2)
+                                .reply_markup(keyboard)
+                                .await
+                                .map_err(|e| tracing::warn!("send approval prompt error: {e}"))
+                                .ok();
+                        }
+                    }
                 }
                 AgentEvent::Completed | AgentEvent::Failed(_) => break,
                 _ => {}
@@ -277,6 +407,100 @@ mod tests {
         }
     }
 
+    // ── Tool progress formatting ───────────────────────────────────────────────
+
+    #[test]
+    fn format_tool_status_with_path_arg() {
+        let args = serde_json::json!({"path": "/etc/hostname"});
+        let s = format_tool_status("read_file", &args);
+        assert!(s.contains("read_file"), "must contain tool name");
+        assert!(s.contains("/etc/hostname"), "must contain primary arg");
+    }
+
+    #[test]
+    fn format_tool_status_with_message_arg() {
+        let args = serde_json::json!({"message": "hello world"});
+        let s = format_tool_status("echo", &args);
+        assert!(s.contains("echo"));
+        assert!(s.contains("hello world"));
+    }
+
+    #[test]
+    fn format_tool_status_with_command_arg() {
+        let args = serde_json::json!({"command": "ls -la"});
+        let s = format_tool_status("run_command", &args);
+        assert!(s.contains("run_command"));
+        assert!(s.contains("ls -la"));
+    }
+
+    #[test]
+    fn format_tool_status_no_known_arg_falls_back_to_name() {
+        let s = format_tool_status("session_search", &serde_json::json!({"query": "foo"}));
+        assert!(s.contains("session_search"));
+    }
+
+    #[test]
+    fn format_tool_status_empty_args_falls_back_gracefully() {
+        let s = format_tool_status("echo", &serde_json::json!({}));
+        assert!(s.contains("echo"));
+    }
+
+    // ── Callback data encode/decode ────────────────────────────────────────────
+
+    #[test]
+    fn callback_data_approve_round_trip() {
+        let data = approval_callback_data(true, "call-abc123");
+        assert!(data.starts_with("approve:"));
+        assert!(data.contains("call-abc123"));
+        assert!(data.len() <= 64, "callback_data must fit in 64 bytes");
+        let (approved, id) = parse_callback_data(&data).expect("parse");
+        assert!(approved);
+        assert_eq!(id, "call-abc123");
+    }
+
+    #[test]
+    fn callback_data_deny_round_trip() {
+        let data = approval_callback_data(false, "call-xyz");
+        assert!(data.starts_with("deny:"));
+        let (approved, id) = parse_callback_data(&data).expect("parse");
+        assert!(!approved);
+        assert_eq!(id, "call-xyz");
+    }
+
+    #[test]
+    fn callback_data_max_len_under_64() {
+        // Longest plausible call_id (UUID without dashes = 32 chars)
+        let id = "a".repeat(32);
+        let data = approval_callback_data(true, &id);
+        assert!(data.len() <= 64);
+    }
+
+    #[test]
+    fn parse_callback_data_invalid_returns_none() {
+        assert!(parse_callback_data("garbage").is_none());
+        assert!(parse_callback_data("unknown:foo").is_none());
+        assert!(parse_callback_data("").is_none());
+    }
+
+    // ── Pending approvals map ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn pending_approvals_sender_resolves() {
+        let map: PendingApprovals = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+        let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+        map.lock().await.insert("call-1".to_string(), tx);
+
+        // Simulate callback: look up and send decision
+        let decision = {
+            let mut m = map.lock().await;
+            let tx = m.remove("call-1").expect("tx present");
+            tx.send(true).expect("send");
+            true
+        };
+        assert!(decision);
+        assert!(rx.await.expect("receive"));
+    }
+
     // ── Gateway trait ──────────────────────────────────────────────────────────
 
     #[test]
@@ -296,7 +520,11 @@ mod tests {
     async fn run_telegram_turn_returns_text() {
         let ctx = make_ctx();
         let chat_id = ChatId(42);
-        let reply = run_telegram_turn(ctx, chat_id, "hello".to_string()).await;
+        let bot = Bot::new("fake-token-for-test");
+        let pending: PendingApprovals =
+            Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+        let reply =
+            run_telegram_turn(ctx, chat_id, "hello".to_string(), bot, pending).await;
         assert!(!reply.is_empty());
     }
 

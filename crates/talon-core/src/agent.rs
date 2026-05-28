@@ -104,7 +104,11 @@ impl Agent {
                 })
                 .collect();
 
-            if response.stop_reason == "end_turn" || tool_calls.is_empty() {
+            // Drive the loop from tool_calls presence, not stop_reason.
+            // GitHub Copilot (OpenAI-compat) returns stop_reason="end_turn" even when
+            // tool_calls are present — stop_reason is unreliable across providers.
+            // max_iterations is the backstop against infinite loops.
+            if tool_calls.is_empty() {
                 self.emit(AgentEvent::Completed).await;
                 return Ok(());
             }
@@ -458,6 +462,51 @@ mod tests {
             "expected 2 ToolResult events, got {tool_result_count}"
         );
         assert!(events.iter().any(|e| matches!(e, AgentEvent::Completed)));
+    }
+
+    /// Regression: GitHub Copilot (OpenAI-compat) returns stop_reason="end_turn" even when
+    /// tool_calls are present. The loop must drive from tool_calls presence, not stop_reason.
+    #[tokio::test]
+    async fn agent_run_tool_executes_when_stop_reason_is_end_turn() {
+        let (tx, mut rx) = make_channel();
+        let provider = Arc::new(MockProvider::new(vec![
+            LlmResponse {
+                content: vec![ContentBlock::ToolUse {
+                    id: "t1".to_string(),
+                    name: "echo".to_string(),
+                    input: json!({"message": "smoke-test-ok"}),
+                }],
+                stop_reason: "end_turn".to_string(), // Copilot sends this even with tool_calls
+            },
+            LlmResponse {
+                content: vec![ContentBlock::Text {
+                    text: "smoke-test-ok".to_string(),
+                }],
+                stop_reason: "end_turn".to_string(),
+            },
+        ]));
+
+        let mut agent = Agent::new(provider, make_dispatcher(), tx);
+        agent
+            .run("sess-copilot", "echo smoke-test-ok".to_string())
+            .await
+            .expect("run");
+
+        let events: Vec<_> = {
+            let mut v = Vec::new();
+            while let Ok(e) = rx.try_recv() {
+                v.push(e);
+            }
+            v
+        };
+        assert!(
+            events.iter().any(|e| matches!(e, AgentEvent::ToolCalled { .. })),
+            "ToolCalled must fire even when stop_reason=end_turn — loop must be driven by tool_calls"
+        );
+        assert!(
+            events.iter().any(|e| matches!(e, AgentEvent::ToolResult { .. })),
+            "ToolResult must be emitted after tool execution"
+        );
     }
 
     #[tokio::test]

@@ -44,7 +44,7 @@ cargo install talon
 ## Features
 
 - **Single binary** — `curl -fsSL talon.sh/install | sh`, nothing else to install
-- **Persistent cross-project memory** — SQLite + FTS5 full-text search; every session is queryable
+- **Persistent cross-project memory** — SQLite + FTS5 full-text search; every session is queryable 
 - **Multi-channel** — CLI, TUI, Telegram, Discord, HTTP/SSE from one process
 - **Approval membrane** — per-invocation, typed `ApprovalLevel`; dangerous tools cannot run without explicit confirmation
 - **Docker-sandboxed terminal** — seccomp-enforced; `rm -rf /` is physically blocked in the sandbox
@@ -56,7 +56,7 @@ cargo install talon
 
 ---
 
-## Architecture
+## Architecture:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -71,11 +71,11 @@ cargo install talon
 │                          │                              │
 │              ┌───── Core Agent Loop ─────┐              │
 │              │  Build Context            │              │
-│              │     → LLM Call           │              │
-│              │       → Parse            │              │
-│              │         → Approval Check │              │
-│              │           → Execute Tool │              │
-│              │             → Loop       │              │
+│              │     → LLM Call            │              │
+│              │       → Parse             │              │
+│              │         → Approval Check  │              │
+│              │           → Execute Tool  │              │
+│              │             → Loop        │              │
 │              └───────────────────────────┘              │
 │          │              │              │                │
 │   Tool Registry   Memory Store    LLM Providers         │
