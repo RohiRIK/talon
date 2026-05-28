@@ -44,7 +44,7 @@ deadpool-sqlite  = "0.9"
 
 # Memory — LanceDB vector + FTS + hybrid search (Phase 2.5)
 lancedb          = "0.29"
-arrow-array      = "54"
+arrow-array      = "58"
 
 # TUI
 ratatui          = "0.29"
