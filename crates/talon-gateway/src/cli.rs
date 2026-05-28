@@ -40,6 +40,35 @@ impl CliGateway {
         self.run_turn(user_message).await
     }
 
+    /// Run one agent turn and return the (normalized) response text without printing.
+    ///
+    /// Used by tests to verify response content without capturing stdout.
+    #[cfg(test)]
+    async fn run_turn_text(&self, user_message: String) -> Result<String, GatewayError> {
+        let render_mode = self.render_mode;
+        let (event_tx, mut event_rx) = mpsc::channel::<AgentEvent>(64);
+
+        let event_handle = tokio::spawn(async move {
+            let mut last_text = String::new();
+            while let Some(event) = event_rx.recv().await {
+                match event {
+                    AgentEvent::Text { content } => last_text = content,
+                    AgentEvent::Completed | AgentEvent::Failed(_) => break,
+                    AgentEvent::ApprovalRequested { tx, .. } => { tx.send(false).ok(); }
+                    _ => {}
+                }
+            }
+            last_text
+        });
+
+        let mut agent = self.ctx.build_agent(event_tx);
+        agent.run(&self.session_id, user_message).await
+            .map_err(|e| GatewayError::Agent(e.to_string()))?;
+
+        let text = event_handle.await.unwrap_or_default();
+        Ok(normalize_markdown(&text, render_mode))
+    }
+
     async fn run_turn(&self, user_message: String) -> Result<(), GatewayError> {
         let render_mode = self.render_mode;
         let (event_tx, mut event_rx) = mpsc::channel::<AgentEvent>(64);
@@ -184,6 +213,7 @@ fn print_banner() {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
     use talon_llm::MockProvider;
@@ -210,8 +240,31 @@ mod tests {
     #[tokio::test]
     async fn cli_gateway_run_turn_with_mock_provider() {
         let gw = CliGateway::new(make_ctx(), RenderMode::Plain);
-        // run_turn with a mock provider that returns text immediately
         let result = gw.run_turn("hello".to_string()).await;
         assert!(result.is_ok(), "expected Ok, got {result:?}");
+    }
+
+    #[tokio::test]
+    async fn cli_gateway_roundtrip_returns_mock_text() {
+        let gw = CliGateway::new(make_ctx(), RenderMode::Plain);
+        let text = gw
+            .run_turn_text("ping".to_string())
+            .await
+            .expect("roundtrip");
+        assert!(
+            text.contains("hello from mock"),
+            "expected mock response text, got: {text:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_gateway_roundtrip_accessible_strips_nothing_for_plain_text() {
+        let gw = CliGateway::new(make_ctx(), RenderMode::Accessible);
+        let text = gw
+            .run_turn_text("ping".to_string())
+            .await
+            .expect("roundtrip");
+        // MockProvider returns plain text — accessible mode leaves it unchanged.
+        assert!(!text.is_empty());
     }
 }

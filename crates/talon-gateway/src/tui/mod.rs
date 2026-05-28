@@ -299,9 +299,15 @@ fn handle_agent_event(event: AgentEvent, app: App) -> App {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use ratatui::backend::TestBackend;
     use talon_llm::MockProvider;
+
+    use app::Msg;
+    use components::{chat::ChatView, status::StatusBar};
+    use layout::SplitPane;
 
     fn make_ctx() -> Arc<GatewayContext> {
         Arc::new(GatewayContext::new(Arc::new(MockProvider::text(
@@ -323,5 +329,42 @@ mod tests {
         // In an interactive terminal, detected = Tui; accessible overrides to Accessible.
         // Either way, if accessible=true, result must not be Tui.
         assert_ne!(gw.render_mode(), RenderMode::Tui);
+    }
+
+    /// Headless render smoke test: push a message into App, draw one frame
+    /// via TestBackend, and verify the message text appears in the cell buffer.
+    #[test]
+    fn tui_headless_render_smoke() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
+
+        let mut app = App::new("sess-smoke", "claude-sonnet");
+        app = app.update(Msg::Resize { cols: 120, rows: 30 });
+        app = app.update(Msg::AssistantText("smoke test message content".to_string()));
+
+        terminal
+            .draw(|frame| {
+                let areas = SplitPane::split(frame.area(), app.layout_mode, false);
+                ChatView::render(frame, areas.chat, &app.messages, app.scroll_offset);
+                StatusBar::render(frame, areas.status, &app.status);
+            })
+            .expect("draw");
+
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+
+        assert!(
+            content.contains("smoke test message content"),
+            "expected message in render buffer, got:\n{content}"
+        );
+        assert!(
+            content.contains("claude-sonnet"),
+            "expected model name in status bar"
+        );
     }
 }
