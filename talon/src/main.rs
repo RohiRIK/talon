@@ -14,7 +14,7 @@ use talon_gateway::{
     http::HttpGateway,
     tui::TuiGateway,
 };
-use talon_llm::{AnthropicProvider, LlmProvider};
+use talon_llm::{AnthropicProvider, GitHubCopilotProvider, LlmProvider};
 use talon_memory::{Database, SqliteStore};
 use talon_tools::SessionSearchTool;
 
@@ -280,17 +280,30 @@ async fn cmd_run(
     gateway_flag: String,
     accessible: bool,
 ) -> Result<()> {
-    let api_key = std::env::var("TALON_LLM_API_KEY")
-        .ok()
-        .or_else(load_api_key)
-        .unwrap_or_default();
+    let provider_name = std::env::var("TALON_LLM_PROVIDER")
+        .unwrap_or_else(|_| "anthropic".to_string());
 
-    if api_key.is_empty() {
-        println!("API key not configured. Run `talon init` or set TALON_LLM_API_KEY.");
-        return Ok(());
-    }
+    // Key-less providers (github-copilot, claude-code) don't need TALON_LLM_API_KEY.
+    let needs_api_key = matches!(provider_name.as_str(), "anthropic" | "openai");
 
-    let ctx = build_gateway_context(api_key).await?;
+    let api_key = if needs_api_key {
+        let key = std::env::var("TALON_LLM_API_KEY")
+            .ok()
+            .or_else(load_api_key)
+            .unwrap_or_default();
+        if key.is_empty() {
+            println!(
+                "API key not configured. Run `talon init`, set TALON_LLM_API_KEY, \
+                 or use a key-less provider: TALON_LLM_PROVIDER=github-copilot"
+            );
+            return Ok(());
+        }
+        key
+    } else {
+        String::new()
+    };
+
+    let ctx = build_gateway_context(&provider_name, api_key).await?;
     let ctx = Arc::new(ctx);
 
     // Single-turn mode: --message "..." skips the interactive REPL.
@@ -309,6 +322,12 @@ async fn cmd_run(
             Arc::new(HttpGateway::new(Arc::clone(&ctx), addr))
         }
         "tui" => Arc::new(TuiGateway::new(Arc::clone(&ctx), accessible, "talon")),
+        #[cfg(feature = "telegram")]
+        "telegram" => {
+            let gw = talon_gateway::telegram::TelegramGateway::from_env(Arc::clone(&ctx))
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            Arc::new(gw)
+        }
         _ => {
             // "cli" and any unknown value fall back to CLI.
             let mode = if accessible {
@@ -323,8 +342,15 @@ async fn cmd_run(
     gateway.run().await.map_err(|e| anyhow::anyhow!("{e}"))
 }
 
-async fn build_gateway_context(api_key: String) -> Result<GatewayContext> {
-    let provider: Arc<dyn LlmProvider> = Arc::new(AnthropicProvider::new(api_key));
+async fn build_gateway_context(provider_name: &str, api_key: String) -> Result<GatewayContext> {
+    let provider: Arc<dyn LlmProvider> = match provider_name {
+        "github-copilot" | "copilot" => Arc::new(
+            GitHubCopilotProvider::new()
+                .map_err(|e| anyhow::anyhow!("GitHub Copilot auth failed: {e}"))?,
+        ),
+        // "anthropic" and anything else defaults to Anthropic.
+        _ => Arc::new(AnthropicProvider::new(api_key)),
+    };
     let mut ctx = GatewayContext::new(provider);
 
     // Register built-in tools.

@@ -16,7 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 talon-core    = { path = "../crates/talon-core" }
-talon-llm     = { path = "../crates/talon-llm" }
+talon-llm     = { path = "../crates/talon-llm", features = ["github-copilot-provider"] }
 talon-memory  = { path = "../crates/talon-memory" }
 talon-gateway = { path = "../crates/talon-gateway" }
 talon-tools   = { path = "../crates/talon-tools" }
