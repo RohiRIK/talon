@@ -333,6 +333,13 @@ model = "anthropic/claude-sonnet-4-5"
 - [Anthropic Provider](43_Anthropic_Provider.md)
 - [Ollama Local Provider](45a_Ollama_Local_Provider.md)
 
+### CLI-OAuth Providers (Phase 1.5)
+Providers that resolve auth via active CLI sessions rather than raw API keys:
+- [GitHub Copilot Provider](42b_GitHub_Copilot_Provider.md) — `gh auth token` → `api.githubcopilot.com`
+- [Codex Provider](42c_Codex_Provider.md) — `OPENAI_API_KEY` / `CODEX_ACCESS_TOKEN` → `api.openai.com`
+- [Claude Code Provider](43b_Claude_Code_Provider.md) — `CLAUDE_CODE_OAUTH_TOKEN` / `claude setup-token` → Anthropic
+- [Antigravity Provider](44b_Antigravity_Provider.md) — `GEMINI_API_KEY` / `agy auth token` → Gemini OpenAI-compat
+
 ### See Also
 - [Streaming SSE Parser](44_Streaming_SSE_Parser.md)
 - [Streaming & Realtime Output](../04_Core_Features/31a_Streaming_And_Realtime_Output.md)

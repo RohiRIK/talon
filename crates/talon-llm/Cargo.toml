@@ -19,6 +19,9 @@ tracing.workspace    = true
 [features]
 mock = []
 github-copilot-provider = []
+codex-provider = []
+claude-code-provider = []
+antigravity-provider = []
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

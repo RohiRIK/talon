@@ -4,13 +4,33 @@ pub use anthropic::AnthropicProvider;
 mod openai;
 pub use openai::OpenAIProvider;
 
-#[cfg(any(test, feature = "github-copilot-provider"))]
+#[cfg(any(
+    test,
+    feature = "github-copilot-provider",
+    feature = "codex-provider",
+    feature = "antigravity-provider"
+))]
 pub(crate) mod openai_compat;
 
 #[cfg(feature = "github-copilot-provider")]
 mod github_copilot;
 #[cfg(feature = "github-copilot-provider")]
 pub use github_copilot::GitHubCopilotProvider;
+
+#[cfg(feature = "codex-provider")]
+mod codex;
+#[cfg(feature = "codex-provider")]
+pub use codex::CodexProvider;
+
+#[cfg(feature = "claude-code-provider")]
+mod claude_code;
+#[cfg(feature = "claude-code-provider")]
+pub use claude_code::ClaudeCodeProvider;
+
+#[cfg(feature = "antigravity-provider")]
+mod antigravity;
+#[cfg(feature = "antigravity-provider")]
+pub use antigravity::AntigravityProvider;
 
 #[cfg(any(test, feature = "mock"))]
 pub mod mock;

@@ -305,6 +305,29 @@ sqlite3 ~/.talon/talon.db 'SELECT content FROM messages ORDER BY id DESC LIMIT 1
 
 ---
 
+## Phase 1.5 — Additional LLM Providers
+
+> **Why:** Real-world agent users authenticate via their active CLI sessions (GitHub Copilot, Gemini,
+> Claude Code) rather than raw API keys. Each provider follows the same token-resolver pattern:
+> env var → CLI fallback → `LlmError::AuthFailed`. OpenAI-compatible providers share
+> `openai_compat.rs`; Anthropic-format providers inline the Messages API format.
+
+### Tasks
+- [x] 1.5.0 `crates/talon-llm/src/github_copilot.rs` + `openai_compat.rs` — `GitHubCopilotProvider`: auth `GITHUB_TOKEN` → `gh auth token` CLI; endpoint `https://api.githubcopilot.com/chat/completions`; default model `claude-sonnet-4-5`; feature `github-copilot-provider`
+- [x] 1.5.1 `crates/talon-llm/src/codex.rs` — `CodexProvider`: auth `OPENAI_API_KEY` → `CODEX_ACCESS_TOKEN`; endpoint `https://api.openai.com/v1/chat/completions`; default model `o4-mini`; feature `codex-provider`; expand `openai_compat.rs` gate
+- [x] 1.5.2 `crates/talon-llm/src/claude_code.rs` — `ClaudeCodeProvider`: auth `CLAUDE_CODE_OAUTH_TOKEN` (Bearer) → `ANTHROPIC_AUTH_TOKEN` (Bearer) → `ANTHROPIC_API_KEY` (x-api-key) → `claude setup-token` CLI; endpoint `https://api.anthropic.com/v1/messages`; default model `claude-opus-4-7`; feature `claude-code-provider`
+- [x] 1.5.3 `crates/talon-llm/src/antigravity.rs` — `AntigravityProvider`: auth `GEMINI_API_KEY` → `GOOGLE_API_KEY` → `agy auth token` CLI; endpoint `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`; default model `gemini-3.5-flash`; feature `antigravity-provider`; expand `openai_compat.rs` gate
+- [x] 1.5.4 Unit tests for 1.5.1–1.5.3: token resolution, env override, model default, Arc<dyn LlmProvider> constructible, empty-env rejection (5–6 tests per provider)
+
+### Exit Gate
+```bash
+cargo clippy --workspace --all-targets -- -D warnings -D clippy::unwrap_used -D clippy::expect_used
+cargo nextest run -p talon-llm
+# with each feature: --features talon-llm/codex-provider, claude-code-provider, antigravity-provider
+```
+
+---
+
 ## Phase 2 — Memory (Weeks 3–4)
 
 > **Edge:** FTS5 full-text search built into the binary (rusqlite bundled). Aider has zero persistent
