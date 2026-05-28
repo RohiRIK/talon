@@ -502,6 +502,7 @@ tokio runtime
 - [ ] 4.16 Update `talon/src/main.rs`: `--gateway cli,tui,telegram,http` flag; `--accessible` flag; spawn each as `tokio::spawn`
 - [ ] 4.17 Integration tests: CLI roundtrip, HTTP POST roundtrip with mock LLM, TUI render smoke test (headless)
 - [ ] 4.18 Manual test: Telegram bot responds within 5s end-to-end
+- [ ] 4.19 `talon init` onboarding wizard — `talon/src/init.rs`: detect available provider(s) by probing auth (env vars, CLI tools); query each provider's models endpoint (e.g. `GET https://api.githubcopilot.com/models`); present an interactive numbered list of `model_picker_enabled` models; write chosen model to `~/.talon/config.toml [llm] model`; all providers read this config first, then `TALON_LLM_MODEL` env override, then their `DEFAULT_MODEL` constant as last-resort fallback. Run automatically on first launch when no config exists.
 
 ### New workspace dependencies (add in this phase)
 

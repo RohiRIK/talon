@@ -13,7 +13,7 @@ pub struct GitHubCopilotProvider {
 
 impl GitHubCopilotProvider {
     const ENDPOINT: &'static str = "https://api.githubcopilot.com/chat/completions";
-    const DEFAULT_MODEL: &'static str = "claude-sonnet-4-5";
+    const DEFAULT_MODEL: &'static str = "claude-sonnet-4.6";
 
     pub fn new() -> Result<Self, LlmError> {
         let token = Self::resolve_token()?;
@@ -121,7 +121,7 @@ mod tests {
         unsafe {
             std::env::remove_var("GITHUB_TOKEN");
         }
-        assert_eq!(provider.model, "claude-sonnet-4-5");
+        assert_eq!(provider.model, "claude-sonnet-4.6");
     }
 
     #[test]
@@ -164,5 +164,34 @@ mod tests {
         if let Ok(tok) = result {
             assert!(!tok.is_empty(), "token must not be empty");
         }
+    }
+
+    /// Live smoke test — skipped by default.
+    /// Run with: cargo nextest run --run-ignored all -E 'test(smoke)'
+    #[tokio::test]
+    #[ignore = "requires live GitHub token with Copilot access"]
+    async fn smoke_complete_returns_text() {
+        use crate::ContentBlock;
+        use std::time::Duration;
+
+        let provider = match GitHubCopilotProvider::new() {
+            Ok(p) => p,
+            Err(_) => return, // no token available in this environment
+        };
+        let messages = vec![Message::user("Say hello in one word.")];
+        let resp = tokio::time::timeout(
+            Duration::from_secs(30),
+            provider.complete(&messages, &[]),
+        )
+        .await
+        .expect("timed out after 30s")
+        .expect("complete failed");
+
+        assert!(!resp.content.is_empty(), "response must have at least one content block");
+        let has_text = resp
+            .content
+            .iter()
+            .any(|b| matches!(b, ContentBlock::Text { text } if !text.is_empty()));
+        assert!(has_text, "response must contain a non-empty Text block");
     }
 }
