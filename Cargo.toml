@@ -76,7 +76,7 @@ chrono  = { version = "0.4", features = ["serde"] }
 
 # Phase 4 — Gateway
 tui-textarea         = "0.7"
-ratatui-image        = "2"
+ratatui-image        = "11"
 comrak               = "0.28"
 syntect              = "5"
 similar              = "2"
