@@ -38,8 +38,8 @@ This applies to: Talon's system prompt, tool `schema()` descriptions, `SessionSe
 
 ## Current State
 
-**Phase: 5 — Next.** Phases 0–4 complete (2026-05-28). CLI, TUI (ratatui MVU), HTTP (axum), and Telegram gateways done. `cargo nextest run --workspace` → 349/349 green.
-The next action is Phase 5 (Tools Tier 2 + MCP). Task 4.19 (`talon init` onboarding wizard) is deferred — user decision. See `PLAN.md`.
+**Phase: 6 — Next.** Phases 0–5 complete (Phase 5: 2026-05-29). `cargo nextest run --workspace` → 383/383 green.
+Phase 5 added web_search/web_extract (Safe), SubprocessPlugin + MCP client/adapter/config (NeedsApproval), and a feature-gated BrowserTool, all registered in `build_gateway_context` with per-class timeouts. Deferred: 4.19 init wizard, 4.24 Telegram live smoke. **Pending verification:** Phase 5 live smoke test (real `web_search` + a real MCP server end-to-end) — code path wired, not yet exercised against the network. See `PLAN.md`.
 
 ---
 
@@ -218,7 +218,7 @@ docker build -t talon:phase-N .
 | 2.5 | Talon LTM + LanceDB | ⬜ Not started | Auto fact recall across sessions |
 | 3 | Tools Tier 1 | ✅ Complete (2026-05-28) | 275 tests green; fs tools + Docker/native sandbox + TimeoutWrapper |
 | 4 | Gateway | ✅ Complete (2026-05-28) | CLI + Telegram + HTTP all functional; 349 tests green |
-| 5 | Tools Tier 2 + MCP | ⬜ Not started | MCP server tools discoverable, web search works |
+| 5 | Tools Tier 2 + MCP | ✅ Complete (2026-05-29) | Tools built + registered; live smoke (real search/MCP) pending |
 | 6 | Plugins + Scheduling | ⬜ v1.1 | WASM plugin loads without restart |
 | 7 | Advanced | ⬜ v2 | Parallel subagents, skill evolution |
 

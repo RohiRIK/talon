@@ -11,7 +11,8 @@ use talon_core::tools::{Tool, ToolContext, ToolResult};
 use talon_gateway::{Gateway, GatewayContext, cli::CliGateway, http::HttpGateway, tui::TuiGateway};
 use talon_llm::{AnthropicProvider, GitHubCopilotProvider, LlmProvider};
 use talon_memory::{Database, SqliteStore};
-use talon_tools::SessionSearchTool;
+use talon_tools::mcp::{McpClient, McpServersConfig, adapt_server};
+use talon_tools::{SessionSearchTool, WebExtractTool, WebSearchTool, timeouts};
 
 // ── CLI definition ────────────────────────────────────────────────────────────
 
@@ -351,6 +352,55 @@ async fn build_gateway_context(provider_name: &str, api_key: String) -> Result<G
     // Register built-in tools.
     ctx = ctx.with_tool(Arc::new(EchoTool));
     ctx = ctx.with_tool(Arc::new(ReadFileTool));
+
+    // Phase 5 web tools (Safe), each with the web wall-clock timeout.
+    ctx = ctx.with_tool(timeouts::with_timeout(
+        WebSearchTool::new(),
+        timeouts::WEB_TIMEOUT_SECS,
+    ));
+    ctx = ctx.with_tool(timeouts::with_timeout(
+        WebExtractTool::new(),
+        timeouts::WEB_TIMEOUT_SECS,
+    ));
+
+    // Phase 5 browser tool — experimental, only when built with `--features browser`.
+    #[cfg(feature = "browser")]
+    {
+        use talon_tools::browser::{BrowserPool, BrowserTool};
+        let pool = Arc::new(BrowserPool::default());
+        ctx = ctx.with_tool(timeouts::with_timeout(
+            BrowserTool::new(pool),
+            timeouts::BROWSER_TIMEOUT_SECS,
+        ));
+    }
+
+    // Phase 5 MCP servers from ~/.talon/mcp_servers.toml. Each adapted tool is
+    // already wrapped with the MCP timeout inside `adapt_server`.
+    let mcp_cfg = McpServersConfig::load(&McpServersConfig::default_path()).unwrap_or_else(|e| {
+        tracing::warn!("mcp config: {e}");
+        McpServersConfig::default()
+    });
+    for entry in mcp_cfg.server {
+        let transport = match entry.to_transport() {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!("mcp '{}': {e}", entry.name);
+                continue;
+            }
+        };
+        match McpClient::connect(transport).await {
+            Ok(client) => match adapt_server(Arc::new(client)).await {
+                Ok(tools) => {
+                    tracing::info!("mcp '{}': registered {} tool(s)", entry.name, tools.len());
+                    for tool in tools {
+                        ctx = ctx.with_tool(tool);
+                    }
+                }
+                Err(e) => tracing::warn!("mcp '{}' tools/list failed: {e}", entry.name),
+            },
+            Err(e) => tracing::warn!("mcp '{}' connect failed: {e}", entry.name),
+        }
+    }
 
     // Set up DB persistence and register memory tools.
     let db = talon_home()
@@ -839,5 +889,24 @@ mod tests {
         let args = json!({});
         assert_eq!(EchoTool.approval_level(&args), ApprovalLevel::Safe);
         assert_eq!(ReadFileTool.approval_level(&args), ApprovalLevel::Safe);
+    }
+
+    /// Phase 5 web tools register into a GatewayContext (timeout-wrapped) and
+    /// report their names through the wrapper. Hermetic — no DB/network/env.
+    #[test]
+    fn phase5_web_tools_register() {
+        let provider = Arc::new(AnthropicProvider::new("dummy".to_string()));
+        let ctx = GatewayContext::new(provider)
+            .with_tool(timeouts::with_timeout(
+                WebSearchTool::new(),
+                timeouts::WEB_TIMEOUT_SECS,
+            ))
+            .with_tool(timeouts::with_timeout(
+                WebExtractTool::new(),
+                timeouts::WEB_TIMEOUT_SECS,
+            ));
+        let names: Vec<String> = ctx.tools.iter().map(|t| t.name().to_string()).collect();
+        assert!(names.iter().any(|n| n == "web_search"), "names: {names:?}");
+        assert!(names.iter().any(|n| n == "web_extract"), "names: {names:?}");
     }
 }
