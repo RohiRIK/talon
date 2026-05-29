@@ -9,7 +9,10 @@ use teloxide::{
     Bot,
     dispatching::UpdateFilterExt,
     prelude::*,
-    types::{CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage, ParseMode, Update},
+    types::{
+        CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage, ParseMode,
+        Update,
+    },
 };
 use tokio::sync::{RwLock, mpsc};
 
@@ -234,9 +237,7 @@ impl Gateway for TelegramGateway {
                                     .ok();
                             }
                             AuthResult::Denied => {
-                                tracing::warn!(
-                                    "Rejected unauthorized Telegram user {user_id}"
-                                );
+                                tracing::warn!("Rejected unauthorized Telegram user {user_id}");
                                 bot.send_message(chat_id, "This is a private assistant.")
                                     .await
                                     .map_err(|e| tracing::warn!("send error: {e}"))
@@ -268,7 +269,11 @@ impl Gateway for TelegramGateway {
                             let tx = pending.lock().await.remove(&call_id);
                             if let Some(tx) = tx {
                                 tx.send(approved).ok();
-                                let label = if approved { "✅ Approved" } else { "❌ Denied" };
+                                let label = if approved {
+                                    "✅ Approved"
+                                } else {
+                                    "❌ Denied"
+                                };
                                 if let Some(msg) = q.message {
                                     bot.edit_message_text(msg.chat().id, msg.id(), label)
                                         .await
@@ -285,9 +290,7 @@ impl Gateway for TelegramGateway {
                 }
             });
 
-            let handler = dptree::entry()
-                .branch(msg_handler)
-                .branch(callback_handler);
+            let handler = dptree::entry().branch(msg_handler).branch(callback_handler);
 
             Dispatcher::builder(bot, handler)
                 .enable_ctrlc_handler()
@@ -317,7 +320,9 @@ async fn run_telegram_turn(
         while let Some(event) = event_rx.recv().await {
             match event {
                 AgentEvent::Text { content } => last_text = content,
-                AgentEvent::ToolCalled { ref name, ref args, .. } => {
+                AgentEvent::ToolCalled {
+                    ref name, ref args, ..
+                } => {
                     let status = format_tool_status(name, args);
                     bot_c
                         .send_message(chat_id, status)
@@ -331,36 +336,40 @@ async fn run_telegram_turn(
                     args,
                     approval_level,
                     tx,
-                } => {
-                    match approval_level {
-                        ApprovalLevel::Safe => {
-                            tx.send(true).ok();
-                        }
-                        ApprovalLevel::NeedsApproval | ApprovalLevel::Dangerous => {
-                            let label = if approval_level == ApprovalLevel::Dangerous {
-                                "⚠️ *Dangerous* tool requested"
-                            } else {
-                                "🔒 Approval needed"
-                            };
-                            let status = format_tool_status(&tool_name, &args);
-                            let prompt = format!("{label}\n{status}");
-                            let keyboard = InlineKeyboardMarkup::new(vec![vec![
-                                InlineKeyboardButton::callback("✅ Approve", approval_callback_data(true, &call_id)),
-                                InlineKeyboardButton::callback("❌ Deny", approval_callback_data(false, &call_id)),
-                            ]]);
-
-                            pending_c.lock().await.insert(call_id, tx);
-
-                            bot_c
-                                .send_message(chat_id, prompt)
-                                .parse_mode(ParseMode::MarkdownV2)
-                                .reply_markup(keyboard)
-                                .await
-                                .map_err(|e| tracing::warn!("send approval prompt error: {e}"))
-                                .ok();
-                        }
+                } => match approval_level {
+                    ApprovalLevel::Safe => {
+                        tx.send(true).ok();
                     }
-                }
+                    ApprovalLevel::NeedsApproval | ApprovalLevel::Dangerous => {
+                        let label = if approval_level == ApprovalLevel::Dangerous {
+                            "⚠️ *Dangerous* tool requested"
+                        } else {
+                            "🔒 Approval needed"
+                        };
+                        let status = format_tool_status(&tool_name, &args);
+                        let prompt = format!("{label}\n{status}");
+                        let keyboard = InlineKeyboardMarkup::new(vec![vec![
+                            InlineKeyboardButton::callback(
+                                "✅ Approve",
+                                approval_callback_data(true, &call_id),
+                            ),
+                            InlineKeyboardButton::callback(
+                                "❌ Deny",
+                                approval_callback_data(false, &call_id),
+                            ),
+                        ]]);
+
+                        pending_c.lock().await.insert(call_id, tx);
+
+                        bot_c
+                            .send_message(chat_id, prompt)
+                            .parse_mode(ParseMode::MarkdownV2)
+                            .reply_markup(keyboard)
+                            .await
+                            .map_err(|e| tracing::warn!("send approval prompt error: {e}"))
+                            .ok();
+                    }
+                },
                 AgentEvent::Completed | AgentEvent::Failed(_) => break,
                 _ => {}
             }
@@ -486,7 +495,8 @@ mod tests {
 
     #[tokio::test]
     async fn pending_approvals_sender_resolves() {
-        let map: PendingApprovals = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+        let map: PendingApprovals =
+            Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
         let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
         map.lock().await.insert("call-1".to_string(), tx);
 
@@ -523,8 +533,7 @@ mod tests {
         let bot = Bot::new("fake-token-for-test");
         let pending: PendingApprovals =
             Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
-        let reply =
-            run_telegram_turn(ctx, chat_id, "hello".to_string(), bot, pending).await;
+        let reply = run_telegram_turn(ctx, chat_id, "hello".to_string(), bot, pending).await;
         assert!(!reply.is_empty());
     }
 

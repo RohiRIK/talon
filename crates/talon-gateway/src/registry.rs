@@ -49,14 +49,18 @@ impl Default for GatewayRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{GatewayError, RenderMode};
     use std::future::Future;
     use std::pin::Pin;
-    use crate::{GatewayError, RenderMode};
 
     struct DummyGateway;
     impl Gateway for DummyGateway {
-        fn name(&self) -> &str { "dummy" }
-        fn render_mode(&self) -> RenderMode { RenderMode::Plain }
+        fn name(&self) -> &str {
+            "dummy"
+        }
+        fn render_mode(&self) -> RenderMode {
+            RenderMode::Plain
+        }
         fn run(&self) -> Pin<Box<dyn Future<Output = Result<(), GatewayError>> + Send + '_>> {
             Box::pin(async { Ok(()) })
         }

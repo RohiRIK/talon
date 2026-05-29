@@ -206,8 +206,7 @@ mod tests {
 
     #[test]
     fn accessible_marks_code_blocks() {
-        let result =
-            normalize_markdown("```rust\nlet x = 1;\n```", RenderMode::Accessible);
+        let result = normalize_markdown("```rust\nlet x = 1;\n```", RenderMode::Accessible);
         assert!(result.contains("[code]"));
         assert!(result.contains("[/code]"));
         assert!(result.contains("let x = 1;"));

@@ -25,10 +25,7 @@ impl InputBar {
         pending_approval: Option<&PendingApproval>,
     ) {
         let title = if let Some(approval) = pending_approval {
-            format!(
-                " Approve {}? [y/n] ",
-                approval.tool_name
-            )
+            format!(" Approve {}? [y/n] ", approval.tool_name)
         } else if thinking {
             " Thinking… ".to_string()
         } else {

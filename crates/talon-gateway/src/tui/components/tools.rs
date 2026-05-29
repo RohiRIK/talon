@@ -20,45 +20,44 @@ impl ToolPanel {
             .borders(Borders::ALL)
             .title(" Tools (Tab to toggle) ");
 
-        let items: Vec<ListItem> = tool_calls.iter().map(|t| {
-            let (icon, style) = match t.state {
-                ToolState::Running => (
-                    "⠿ ",
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-                ),
-                ToolState::Done => (
-                    "✓ ",
-                    Style::default().fg(Color::Green),
-                ),
-                ToolState::Error => (
-                    "✗ ",
-                    Style::default().fg(Color::Red),
-                ),
-            };
-
-            let name_span = Span::styled(t.name.clone(), style);
-            let icon_span = Span::styled(icon.to_string(), style);
-
-            let output_line = t.output.as_deref().map(|o| {
-                // Truncate to 60 chars to fit the panel.
-                let truncated = if o.len() > 60 {
-                    format!("{}…", &o[..57])
-                } else {
-                    o.to_string()
+        let items: Vec<ListItem> = tool_calls
+            .iter()
+            .map(|t| {
+                let (icon, style) = match t.state {
+                    ToolState::Running => (
+                        "⠿ ",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    ToolState::Done => ("✓ ", Style::default().fg(Color::Green)),
+                    ToolState::Error => ("✗ ", Style::default().fg(Color::Red)),
                 };
-                Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(truncated, Style::default().fg(Color::DarkGray)),
-                ])
-            });
 
-            let mut lines = vec![Line::from(vec![icon_span, name_span])];
-            if let Some(out) = output_line {
-                lines.push(out);
-            }
+                let name_span = Span::styled(t.name.clone(), style);
+                let icon_span = Span::styled(icon.to_string(), style);
 
-            ListItem::new(lines)
-        }).collect();
+                let output_line = t.output.as_deref().map(|o| {
+                    // Truncate to 60 chars to fit the panel.
+                    let truncated = if o.len() > 60 {
+                        format!("{}…", &o[..57])
+                    } else {
+                        o.to_string()
+                    };
+                    Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(truncated, Style::default().fg(Color::DarkGray)),
+                    ])
+                });
+
+                let mut lines = vec![Line::from(vec![icon_span, name_span])];
+                if let Some(out) = output_line {
+                    lines.push(out);
+                }
+
+                ListItem::new(lines)
+            })
+            .collect();
 
         let list = List::new(items).block(block);
         frame.render_widget(list, area);

@@ -3,12 +3,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use axum::{
-    Json, Router,
-    extract::State,
-    http::StatusCode,
-    routing::post,
-};
+use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
@@ -54,9 +49,7 @@ impl Gateway for HttpGateway {
 
             tracing::info!("HTTP gateway listening on {}", self.addr);
 
-            axum::serve(listener, app)
-                .await
-                .map_err(GatewayError::Io)?;
+            axum::serve(listener, app).await.map_err(GatewayError::Io)?;
 
             Ok(())
         })
@@ -162,10 +155,7 @@ mod tests {
 
     #[test]
     fn http_gateway_name() {
-        let gw = HttpGateway::new(
-            make_ctx(),
-            "127.0.0.1:0".parse().expect("addr"),
-        );
+        let gw = HttpGateway::new(make_ctx(), "127.0.0.1:0".parse().expect("addr"));
         assert_eq!(gw.name(), "http");
     }
 

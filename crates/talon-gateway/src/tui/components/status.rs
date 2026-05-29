@@ -67,8 +67,7 @@ impl StatusBar {
             ));
         }
 
-        let para = Paragraph::new(Line::from(spans))
-            .style(Style::default().bg(Color::DarkGray));
+        let para = Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::DarkGray));
         frame.render_widget(para, area);
     }
 }

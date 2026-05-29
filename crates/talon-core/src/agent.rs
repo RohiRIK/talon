@@ -500,11 +500,15 @@ mod tests {
             v
         };
         assert!(
-            events.iter().any(|e| matches!(e, AgentEvent::ToolCalled { .. })),
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::ToolCalled { .. })),
             "ToolCalled must fire even when stop_reason=end_turn — loop must be driven by tool_calls"
         );
         assert!(
-            events.iter().any(|e| matches!(e, AgentEvent::ToolResult { .. })),
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::ToolResult { .. })),
             "ToolResult must be emitted after tool execution"
         );
     }

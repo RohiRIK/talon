@@ -15,15 +15,8 @@ use crate::tui::app::{ChatMessage, ChatRole};
 pub struct ChatView;
 
 impl ChatView {
-    pub fn render(
-        frame: &mut Frame,
-        area: Rect,
-        messages: &[ChatMessage],
-        scroll_offset: usize,
-    ) {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title("Chat");
+    pub fn render(frame: &mut Frame, area: Rect, messages: &[ChatMessage], scroll_offset: usize) {
+        let block = Block::default().borders(Borders::ALL).title("Chat");
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -32,11 +25,15 @@ impl ChatView {
 
         for msg in messages {
             let prefix_style = match msg.role {
-                ChatRole::User => Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-                ChatRole::Assistant => {
-                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
-                }
-                ChatRole::System => Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM),
+                ChatRole::User => Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+                ChatRole::Assistant => Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+                ChatRole::System => Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::DIM),
             };
 
             let prefix = match msg.role {
@@ -156,9 +153,7 @@ fn render_inline_markdown(line: &str, role: &ChatRole) -> Vec<Span<'static>> {
                 i += 2; // closing **
                 spans.push(Span::styled(
                     bold,
-                    Style::default()
-                        .fg(default_fg)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(default_fg).add_modifier(Modifier::BOLD),
                 ));
             }
             '*' | '_' => {
@@ -195,10 +190,7 @@ fn render_inline_markdown(line: &str, role: &ChatRole) -> Vec<Span<'static>> {
     }
 
     if !current.is_empty() {
-        spans.push(Span::styled(
-            current,
-            Style::default().fg(default_fg),
-        ));
+        spans.push(Span::styled(current, Style::default().fg(default_fg)));
     }
 
     spans
@@ -220,22 +212,26 @@ mod tests {
     #[test]
     fn inline_bold_produces_bold_span() {
         let spans = render_inline_markdown("**bold**", &ChatRole::Assistant);
-        assert!(spans.iter().any(|s| s.style.add_modifier.contains(Modifier::BOLD)));
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.style.add_modifier.contains(Modifier::BOLD))
+        );
     }
 
     #[test]
     fn inline_code_produces_cyan_span() {
         let spans = render_inline_markdown("`code`", &ChatRole::Assistant);
-        assert!(spans
-            .iter()
-            .any(|s| s.style.fg == Some(Color::Cyan)));
+        assert!(spans.iter().any(|s| s.style.fg == Some(Color::Cyan)));
     }
 
     #[test]
     fn inline_italic_produces_italic_span() {
         let spans = render_inline_markdown("*italic*", &ChatRole::User);
-        assert!(spans
-            .iter()
-            .any(|s| s.style.add_modifier.contains(Modifier::ITALIC)));
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.style.add_modifier.contains(Modifier::ITALIC))
+        );
     }
 }

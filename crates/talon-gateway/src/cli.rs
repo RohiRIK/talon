@@ -10,8 +10,8 @@ use tokio::sync::mpsc;
 
 use talon_core::events::AgentEvent;
 
-use crate::{GatewayContext, GatewayError, RenderMode, normalize::normalize_markdown};
 use crate::Gateway;
+use crate::{GatewayContext, GatewayError, RenderMode, normalize::normalize_markdown};
 
 /// Single-user interactive CLI gateway.
 ///
@@ -54,7 +54,9 @@ impl CliGateway {
                 match event {
                     AgentEvent::Text { content } => last_text = content,
                     AgentEvent::Completed | AgentEvent::Failed(_) => break,
-                    AgentEvent::ApprovalRequested { tx, .. } => { tx.send(false).ok(); }
+                    AgentEvent::ApprovalRequested { tx, .. } => {
+                        tx.send(false).ok();
+                    }
                     _ => {}
                 }
             }
@@ -62,7 +64,9 @@ impl CliGateway {
         });
 
         let mut agent = self.ctx.build_agent(event_tx);
-        agent.run(&self.session_id, user_message).await
+        agent
+            .run(&self.session_id, user_message)
+            .await
             .map_err(|e| GatewayError::Agent(e.to_string()))?;
 
         let text = event_handle.await.unwrap_or_default();

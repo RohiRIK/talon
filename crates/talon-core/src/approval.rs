@@ -208,9 +208,7 @@ mod tests {
 
         tokio::spawn(async move {
             if let Some(AgentEvent::ApprovalRequested {
-                tx,
-                approval_level,
-                ..
+                tx, approval_level, ..
             }) = rx.recv().await
             {
                 assert_eq!(approval_level, ApprovalLevel::Dangerous);
@@ -236,9 +234,7 @@ mod tests {
 
         tokio::spawn(async move {
             if let Some(AgentEvent::ApprovalRequested {
-                tx,
-                approval_level,
-                ..
+                tx, approval_level, ..
             }) = rx.recv().await
             {
                 assert_eq!(approval_level, ApprovalLevel::NeedsApproval);

@@ -38,11 +38,7 @@ pub struct TuiGateway {
 }
 
 impl TuiGateway {
-    pub fn new(
-        ctx: Arc<GatewayContext>,
-        accessible: bool,
-        model: impl Into<String>,
-    ) -> Self {
+    pub fn new(ctx: Arc<GatewayContext>, accessible: bool, model: impl Into<String>) -> Self {
         let detected = detect_capabilities();
         let render_mode = render::apply_accessible_flag(detected, accessible);
         Self {
@@ -116,11 +112,8 @@ impl TuiGateway {
             // Draw the frame.
             terminal
                 .draw(|frame| {
-                    let areas = SplitPane::split(
-                        frame.area(),
-                        app.layout_mode,
-                        app.tool_panel_visible,
-                    );
+                    let areas =
+                        SplitPane::split(frame.area(), app.layout_mode, app.tool_panel_visible);
 
                     ChatView::render(frame, areas.chat, &app.messages, app.scroll_offset);
 
@@ -144,9 +137,7 @@ impl TuiGateway {
 
             // Poll for events with a short timeout so we can check agent_rx.
             let keyboard_event = tokio::task::block_in_place(|| {
-                if event::poll(Duration::from_millis(50))
-                    .unwrap_or(false)
-                {
+                if event::poll(Duration::from_millis(50)).unwrap_or(false) {
                     event::read().ok()
                 } else {
                     None
@@ -154,8 +145,8 @@ impl TuiGateway {
             });
 
             if let Some(evt) = keyboard_event {
-                app = handle_keyboard_event(evt, app, &mut textarea, &self.ctx, &mut agent_rx)
-                    .await;
+                app =
+                    handle_keyboard_event(evt, app, &mut textarea, &self.ctx, &mut agent_rx).await;
             }
 
             // Drain agent events without blocking.
@@ -163,10 +154,7 @@ impl TuiGateway {
                 let mut should_close = false;
                 if let Some(rx) = agent_rx.as_mut() {
                     while let Ok(agent_event) = rx.try_recv() {
-                        if matches!(
-                            &agent_event,
-                            AgentEvent::Completed | AgentEvent::Failed(_)
-                        ) {
+                        if matches!(&agent_event, AgentEvent::Completed | AgentEvent::Failed(_)) {
                             should_close = true;
                         }
                         app = handle_agent_event(agent_event, app);
@@ -276,7 +264,10 @@ fn handle_agent_event(event: AgentEvent, app: App) -> App {
             if is_error {
                 app.update(Msg::ToolError { id, error: content })
             } else {
-                app.update(Msg::ToolDone { id, output: content })
+                app.update(Msg::ToolDone {
+                    id,
+                    output: content,
+                })
             }
         }
         AgentEvent::ApprovalRequested {
@@ -340,7 +331,10 @@ mod tests {
         let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
 
         let mut app = App::new("sess-smoke", "claude-sonnet");
-        app = app.update(Msg::Resize { cols: 120, rows: 30 });
+        app = app.update(Msg::Resize {
+            cols: 120,
+            rows: 30,
+        });
         app = app.update(Msg::AssistantText("smoke test message content".to_string()));
 
         terminal

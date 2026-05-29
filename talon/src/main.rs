@@ -8,12 +8,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use talon_core::approval::ApprovalLevel;
 use talon_core::tools::{Tool, ToolContext, ToolResult};
-use talon_gateway::{
-    GatewayContext, Gateway,
-    cli::CliGateway,
-    http::HttpGateway,
-    tui::TuiGateway,
-};
+use talon_gateway::{Gateway, GatewayContext, cli::CliGateway, http::HttpGateway, tui::TuiGateway};
 use talon_llm::{AnthropicProvider, GitHubCopilotProvider, LlmProvider};
 use talon_memory::{Database, SqliteStore};
 use talon_tools::SessionSearchTool;
@@ -280,8 +275,8 @@ async fn cmd_run(
     gateway_flag: String,
     accessible: bool,
 ) -> Result<()> {
-    let provider_name = std::env::var("TALON_LLM_PROVIDER")
-        .unwrap_or_else(|_| "anthropic".to_string());
+    let provider_name =
+        std::env::var("TALON_LLM_PROVIDER").unwrap_or_else(|_| "anthropic".to_string());
 
     // Key-less providers (github-copilot, claude-code) don't need TALON_LLM_API_KEY.
     let needs_api_key = matches!(provider_name.as_str(), "anthropic" | "openai");

@@ -34,7 +34,11 @@ pub fn detect_capabilities() -> RenderMode {
 
 /// Override the detected mode if the user passed `--accessible`.
 pub fn apply_accessible_flag(mode: RenderMode, accessible: bool) -> RenderMode {
-    if accessible { RenderMode::Accessible } else { mode }
+    if accessible {
+        RenderMode::Accessible
+    } else {
+        mode
+    }
 }
 
 fn is_tty() -> bool {
@@ -78,12 +82,21 @@ mod tests {
 
     #[test]
     fn accessible_flag_overrides_tui() {
-        assert_eq!(apply_accessible_flag(RenderMode::Tui, true), RenderMode::Accessible);
-        assert_eq!(apply_accessible_flag(RenderMode::Tui, false), RenderMode::Tui);
+        assert_eq!(
+            apply_accessible_flag(RenderMode::Tui, true),
+            RenderMode::Accessible
+        );
+        assert_eq!(
+            apply_accessible_flag(RenderMode::Tui, false),
+            RenderMode::Tui
+        );
     }
 
     #[test]
     fn accessible_flag_preserves_plain() {
-        assert_eq!(apply_accessible_flag(RenderMode::Plain, true), RenderMode::Accessible);
+        assert_eq!(
+            apply_accessible_flag(RenderMode::Plain, true),
+            RenderMode::Accessible
+        );
     }
 }

@@ -10,7 +10,11 @@ use talon_core::tools::{Tool, ToolContext, ToolResult};
 
 /// Callback interface for gateways to receive outbound messages from the agent.
 pub trait MessageSink: Send + Sync {
-    fn send(&self, channel_id: &str, content: &str) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+    fn send(
+        &self,
+        channel_id: &str,
+        content: &str,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }
 
 /// A `MessageSink` backed by a `tokio::sync::mpsc` channel.
@@ -25,7 +29,11 @@ impl ChannelSink {
 }
 
 impl MessageSink for ChannelSink {
-    fn send(&self, channel_id: &str, content: &str) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+    fn send(
+        &self,
+        channel_id: &str,
+        content: &str,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
         let tx = self.tx.clone();
         let channel = channel_id.to_string();
         let msg = content.to_string();
@@ -125,7 +133,10 @@ mod tests {
     #[test]
     fn approval_level_needs_approval() {
         let (tool, _) = make_tool();
-        assert_eq!(tool.approval_level(&json!({})), ApprovalLevel::NeedsApproval);
+        assert_eq!(
+            tool.approval_level(&json!({})),
+            ApprovalLevel::NeedsApproval
+        );
     }
 
     #[test]

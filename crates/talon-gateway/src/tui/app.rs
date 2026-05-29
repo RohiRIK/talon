@@ -76,9 +76,18 @@ impl Default for StatusInfo {
 pub enum Msg {
     UserSubmit(String),
     AssistantText(String),
-    ToolStarted { id: String, name: String },
-    ToolDone { id: String, output: String },
-    ToolError { id: String, error: String },
+    ToolStarted {
+        id: String,
+        name: String,
+    },
+    ToolDone {
+        id: String,
+        output: String,
+    },
+    ToolError {
+        id: String,
+        error: String,
+    },
     ApprovalRequested {
         call_id: String,
         tool_name: String,
@@ -87,7 +96,10 @@ pub enum Msg {
     },
     AgentDone,
     AgentFailed(String),
-    Resize { cols: u16, rows: u16 },
+    Resize {
+        cols: u16,
+        rows: u16,
+    },
     ToggleToolPanel,
     ScrollUp,
     ScrollDown,
@@ -295,7 +307,10 @@ mod tests {
 
     #[test]
     fn resize_updates_layout_mode() {
-        let app = make_app().update(Msg::Resize { cols: 120, rows: 40 });
+        let app = make_app().update(Msg::Resize {
+            cols: 120,
+            rows: 40,
+        });
         assert_eq!(app.layout_mode, LayoutMode::SideBySide);
 
         let app = make_app().update(Msg::Resize { cols: 79, rows: 40 });
