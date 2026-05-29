@@ -9,3 +9,4 @@ pub use send_message::{ChannelSink, MessageSink, SendMessageTool};
 pub use session_search::SessionSearchTool;
 pub use timeout::TimeoutWrapper;
 pub use web::extract::WebExtractTool;
+pub use web::search::WebSearchTool;
