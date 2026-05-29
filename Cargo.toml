@@ -81,7 +81,7 @@ chrono  = { version = "0.4", features = ["serde"] }
 ratatui-image        = { version = "11", default-features = false, features = ["crossterm", "image-defaults"] }
 comrak               = "0.28"
 syntect              = "5"
-similar              = "2"
+similar              = "3"
 indicatif            = "0.17"
 inquire              = "0.7"
 strip-ansi-escapes   = "0.2"
