@@ -43,7 +43,7 @@ rusqlite         = { version = "0.32", features = ["bundled", "vtab"] }
 deadpool-sqlite  = "0.9"
 
 # Memory — LanceDB vector + FTS + hybrid search (Phase 2.5)
-lancedb          = "0.29"
+lancedb          = "0.30"
 arrow-array      = "58"
 
 # TUI
