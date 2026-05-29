@@ -70,6 +70,8 @@ jobs:
           --features talon-llm/codex-provider,talon-llm/claude-code-provider,talon-llm/antigravity-provider,talon-llm/github-copilot-provider
       - name: Gateway feature build (telegram, images)
         run: cargo build -p talon-gateway --features telegram,images
+      - name: Tools feature build (browser)
+        run: cargo build -p talon-tools --features browser
 
   # ── build ─────────────────────────────────────────────────────────────────────
   build:

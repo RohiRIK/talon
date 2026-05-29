@@ -29,6 +29,15 @@ dom_smoothie = "0.17"
 # MCP config (Phase 5): ~/.talon/mcp_servers.toml
 toml = "0.8"
 
+# Browser tool (Phase 5, experimental): headless Chrome via CDP. Off by default.
+[dependencies.headless_chrome]
+version  = "1"
+optional = true
+
+[features]
+# Experimental browser automation. Needs a Chrome binary at runtime.
+browser = ["dep:headless_chrome"]
+
 [dev-dependencies]
 wiremock = "0.6"
 tokio    = { workspace = true, features = ["macros", "rt-multi-thread"] }

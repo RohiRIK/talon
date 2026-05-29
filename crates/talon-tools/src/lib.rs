@@ -1,3 +1,5 @@
+#[cfg(feature = "browser")]
+pub mod browser;
 pub mod fs;
 pub mod mcp;
 pub mod send_message;
@@ -5,6 +7,7 @@ pub mod session_search;
 pub mod subprocess_plugin;
 pub mod terminal;
 pub mod timeout;
+pub mod timeouts;
 pub mod web;
 
 pub use send_message::{ChannelSink, MessageSink, SendMessageTool};

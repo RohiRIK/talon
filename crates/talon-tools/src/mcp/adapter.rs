@@ -57,13 +57,21 @@ impl Tool for McpToolAdapter {
     }
 }
 
-/// Initialize a server and adapt every tool it advertises into `Arc<dyn Tool>`.
+/// Initialize a server and adapt every tool it advertises into `Arc<dyn Tool>`,
+/// each wrapped with the MCP wall-clock timeout (task 5.9).
 pub async fn adapt_server(client: Arc<McpClient>) -> Result<Vec<Arc<dyn Tool>>, McpError> {
+    use crate::timeouts::{MCP_TIMEOUT_SECS, with_timeout};
+
     client.initialize().await?;
     let defs = client.list_tools().await?;
     Ok(defs
         .into_iter()
-        .map(|def| Arc::new(McpToolAdapter::new(Arc::clone(&client), def)) as Arc<dyn Tool>)
+        .map(|def| {
+            with_timeout(
+                McpToolAdapter::new(Arc::clone(&client), def),
+                MCP_TIMEOUT_SECS,
+            )
+        })
         .collect())
 }
 
