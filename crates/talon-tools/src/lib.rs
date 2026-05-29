@@ -1,4 +1,5 @@
 pub mod fs;
+pub mod mcp;
 pub mod send_message;
 pub mod session_search;
 pub mod subprocess_plugin;

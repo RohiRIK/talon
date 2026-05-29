@@ -575,9 +575,9 @@ curl -X POST http://localhost:7777/v1/messages -d '{"content":"hi"}'   # 200 OK
 - [x] 5.1 `crates/talon-tools/src/web/search.rs` — `WebSearchTool` (Safe), Brave API + DDG fallback
 - [x] 5.2 `crates/talon-tools/src/web/extract.rs` — `WebExtractTool` (Safe): fetch + readable text
 - [x] 5.3 `crates/talon-tools/src/subprocess_plugin.rs` — **stdio subprocess plugin protocol first**: spawn process, exchange JSON over stdin/stdout, expose as `Arc<dyn Tool>`; this is the entry point for plugins before WASM
-- [ ] 5.4 `crates/talon-tools/src/mcp/adapter.rs` — `McpToolAdapter`: exposes MCP server tools as `Arc<dyn Tool>`
-- [ ] 5.5 `crates/talon-tools/src/mcp/client.rs` — minimal MCP JSON-RPC client (stdio + HTTP transport)
-- [ ] 5.6 `~/.talon/mcp_servers.toml` config format
+- [x] 5.4 `crates/talon-tools/src/mcp/adapter.rs` — `McpToolAdapter`: exposes MCP server tools as `Arc<dyn Tool>`
+- [x] 5.5 `crates/talon-tools/src/mcp/client.rs` — minimal MCP JSON-RPC client (stdio + HTTP transport)
+- [x] 5.6 `~/.talon/mcp_servers.toml` config format
 - [ ] 5.7 `crates/talon-tools/src/web/browser.rs` — `BrowserTool` (NeedsApproval) using `headless_chrome` crate (actively maintained CDP client); **mark as experimental feature flag `feature = "browser"`**
 - [ ] 5.8 `crates/talon-tools/src/browser/pool.rs` — `BrowserPool`: reuse headless Chrome instances
 - [ ] 5.9 Tool timeouts: web=30s, browser=60s, mcp=30s

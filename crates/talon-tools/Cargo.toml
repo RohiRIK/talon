@@ -26,6 +26,8 @@ tempfile = "3"
 
 # Web tools (Phase 5): readable-text extraction (Readability port).
 dom_smoothie = "0.17"
+# MCP config (Phase 5): ~/.talon/mcp_servers.toml
+toml = "0.8"
 
 [dev-dependencies]
 wiremock = "0.6"
