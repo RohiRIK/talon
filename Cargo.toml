@@ -36,7 +36,7 @@ serde_json       = "1"
 reqwest          = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
 # Web framework
-axum             = "0.7"
+axum             = "0.8"
 
 # Database — SQLite (bundled, FTS5 via vtab feature)
 rusqlite         = { version = "0.32", features = ["bundled", "vtab"] }
@@ -44,26 +44,26 @@ deadpool-sqlite  = "0.9"
 
 # Memory — LanceDB vector + FTS + hybrid search (Phase 2.5)
 lancedb          = "0.29"
-arrow-array      = "54"
+arrow-array      = "58"
 
 # TUI
 ratatui          = "0.29"
 crossterm        = "0.28"
 
 # Telegram
-teloxide         = { version = "0.13", features = ["macros"] }
+teloxide         = { version = "0.17", features = ["macros"] }
 
 # CLI
 clap             = { version = "4",    features = ["derive"] }
 
 # WASM plugin host (Phase 6, feature-flagged)
-wasmtime         = "43"
+wasmtime         = "45"
 
 # OS keychain
 keyring          = "3"
 
 # Error handling
-thiserror        = "1"
+thiserror        = "2"
 anyhow           = "1"
 
 # Observability

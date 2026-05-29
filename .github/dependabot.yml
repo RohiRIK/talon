@@ -11,6 +11,12 @@ updates:
     labels:
       - deps
     open-pull-requests-limit: 10
+    ignore:
+      # keyring v4 is a ground-up rewrite; upstream explicitly says do NOT
+      # upgrade existing v3 apps (use keyring-core instead). Stay on v3 until
+      # a deliberate keyring-core migration. See PR #10.
+      - dependency-name: "keyring"
+        update-types: ["version-update:semver-major"]
     groups:
       # Group all patch-level Rust dep bumps into one PR
       patch-updates:
