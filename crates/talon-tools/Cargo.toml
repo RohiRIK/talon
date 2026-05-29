@@ -23,3 +23,10 @@ globset  = "0.4"
 regex    = "1"
 walkdir  = "2"
 tempfile = "3"
+
+# Web tools (Phase 5): readable-text extraction (Readability port).
+dom_smoothie = "0.17"
+
+[dev-dependencies]
+wiremock = "0.6"
+tokio    = { workspace = true, features = ["macros", "rt-multi-thread"] }
