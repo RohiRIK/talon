@@ -574,7 +574,7 @@ curl -X POST http://localhost:7777/v1/messages -d '{"content":"hi"}'   # 200 OK
 ### Tasks
 - [x] 5.1 `crates/talon-tools/src/web/search.rs` — `WebSearchTool` (Safe), Brave API + DDG fallback
 - [x] 5.2 `crates/talon-tools/src/web/extract.rs` — `WebExtractTool` (Safe): fetch + readable text
-- [ ] 5.3 `crates/talon-tools/src/subprocess_plugin.rs` — **stdio subprocess plugin protocol first**: spawn process, exchange JSON over stdin/stdout, expose as `Arc<dyn Tool>`; this is the entry point for plugins before WASM
+- [x] 5.3 `crates/talon-tools/src/subprocess_plugin.rs` — **stdio subprocess plugin protocol first**: spawn process, exchange JSON over stdin/stdout, expose as `Arc<dyn Tool>`; this is the entry point for plugins before WASM
 - [ ] 5.4 `crates/talon-tools/src/mcp/adapter.rs` — `McpToolAdapter`: exposes MCP server tools as `Arc<dyn Tool>`
 - [ ] 5.5 `crates/talon-tools/src/mcp/client.rs` — minimal MCP JSON-RPC client (stdio + HTTP transport)
 - [ ] 5.6 `~/.talon/mcp_servers.toml` config format
