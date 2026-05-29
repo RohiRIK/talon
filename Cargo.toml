@@ -47,8 +47,8 @@ lancedb          = "0.29"
 arrow-array      = "58"
 
 # TUI
-ratatui          = "0.29"
-crossterm        = "0.28"
+ratatui          = "0.30"
+crossterm        = "0.29"
 
 # Telegram
 teloxide         = { version = "0.17", features = ["macros"] }
@@ -75,8 +75,10 @@ uuid    = { version = "1", features = ["v4"] }
 chrono  = { version = "0.4", features = ["serde"] }
 
 # Phase 4 — Gateway
-tui-textarea         = "0.7"
-ratatui-image        = "2"
+# Input editing is hand-rolled (crates/talon-gateway/src/tui/components/input.rs);
+# tui-textarea was dropped because it lags ratatui releases (no 0.30 support).
+# default-features=false drops `chafa-dyn`, which needs the `chafa` C system lib.
+ratatui-image        = { version = "11", default-features = false, features = ["crossterm", "image-defaults"] }
 comrak               = "0.28"
 syntect              = "5"
 similar              = "2"

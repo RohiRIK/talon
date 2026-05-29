@@ -255,7 +255,7 @@ impl Gateway for TelegramGateway {
                     let pending = Arc::clone(&pending);
                     async move {
                         // Ack the button press immediately so Telegram stops the spinner.
-                        bot.answer_callback_query(&q.id)
+                        bot.answer_callback_query(q.id)
                             .await
                             .map_err(|e| tracing::warn!("answer_callback_query error: {e}"))
                             .ok();

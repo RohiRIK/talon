@@ -21,7 +21,12 @@ use talon_core::events::AgentEvent;
 
 use crate::{Gateway, GatewayContext, GatewayError, RenderMode};
 use app::{App, Msg};
-use components::{chat::ChatView, input::InputBar, status::StatusBar, tools::ToolPanel};
+use components::{
+    chat::ChatView,
+    input::{Input, InputBar},
+    status::StatusBar,
+    tools::ToolPanel,
+};
 use layout::SplitPane;
 use render::detect_capabilities;
 
@@ -103,7 +108,7 @@ impl TuiGateway {
             rows: size.height,
         });
 
-        let mut textarea = InputBar::new_textarea();
+        let mut input = Input::new();
 
         // Channel for agent events during an active run.
         let mut agent_rx: Option<mpsc::Receiver<AgentEvent>> = None;
@@ -120,7 +125,7 @@ impl TuiGateway {
                     InputBar::render(
                         frame,
                         areas.input,
-                        &mut textarea,
+                        &input,
                         app.status.thinking,
                         app.pending_approval.as_ref(),
                     );
@@ -145,8 +150,7 @@ impl TuiGateway {
             });
 
             if let Some(evt) = keyboard_event {
-                app =
-                    handle_keyboard_event(evt, app, &mut textarea, &self.ctx, &mut agent_rx).await;
+                app = handle_keyboard_event(evt, app, &mut input, &self.ctx, &mut agent_rx).await;
             }
 
             // Drain agent events without blocking.
@@ -177,7 +181,7 @@ impl TuiGateway {
 async fn handle_keyboard_event(
     evt: Event,
     mut app: App,
-    textarea: &mut tui_textarea::TextArea<'static>,
+    input: &mut Input,
     ctx: &Arc<GatewayContext>,
     agent_rx: &mut Option<mpsc::Receiver<AgentEvent>>,
 ) -> App {
@@ -194,14 +198,14 @@ async fn handle_keyboard_event(
             if (key.modifiers == KeyModifiers::CONTROL || key.modifiers == KeyModifiers::ALT)
                 && key.code == KeyCode::Enter
             {
-                let text: String = textarea.lines().join("\n");
+                let text: String = input.text();
                 let trimmed = text.trim();
                 if trimmed.is_empty() || app.status.thinking {
                     return app;
                 }
 
                 let user_text = trimmed.to_string();
-                *textarea = InputBar::new_textarea(); // clear input
+                input.clear();
                 app = app.update(Msg::UserSubmit(user_text.clone()));
 
                 // Spawn agent turn
@@ -240,8 +244,8 @@ async fn handle_keyboard_event(
                 return app.update(Msg::ScrollDown);
             }
 
-            // Forward all other keys to textarea
-            textarea.input(evt);
+            // Forward all other keys to the input editor
+            input.input(&evt);
         }
         Event::Resize(cols, rows) => {
             app = app.update(Msg::Resize { cols, rows });

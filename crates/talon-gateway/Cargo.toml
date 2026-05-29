@@ -25,7 +25,6 @@ tracing.workspace      = true
 uuid.workspace         = true
 anyhow.workspace       = true
 
-tui-textarea.workspace       = true
 comrak.workspace             = true
 syntect.workspace            = true
 similar.workspace            = true

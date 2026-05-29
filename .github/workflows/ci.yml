@@ -68,6 +68,8 @@ jobs:
         run: >-
           cargo nextest run -p talon-llm
           --features talon-llm/codex-provider,talon-llm/claude-code-provider,talon-llm/antigravity-provider,talon-llm/github-copilot-provider
+      - name: Gateway feature build (telegram, images)
+        run: cargo build -p talon-gateway --features telegram,images
 
   # ── build ─────────────────────────────────────────────────────────────────────
   build:
