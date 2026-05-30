@@ -52,7 +52,7 @@ talon/                         # workspace root
 └── crates/
     ├── talon-core/            # agent loop, approval membrane
     ├── talon-llm/             # LlmProvider trait + impls
-    ├── talon-memory/          # Talon LTM + LanceDB + sessions
+    ├── talon-memory/          # Talon LTM + sqlite-vec + FTS5 + sessions
     ├── talon-tools/           # all built-in tools
     ├── talon-gateway/         # CLI/TUI, Telegram, Discord, HTTP
     └── talon-plugins/         # WASM host (wasmtime)
@@ -82,18 +82,22 @@ These are defined ONCE in their home crate. Never redefine locally. Never import
 
 ### Memory Stack
 
-**Decision:** Talon LTM + LanceDB + SQLite + Honker. No Redis.
+**Decision (ADR 0008, supersedes 0005):** Talon LTM on **one SQLite DB** — `sqlite-vec` + FTS5. No LanceDB. No Redis.
 
 | Layer | Component | Role |
 |-------|-----------|------|
-| Memory model | **Talon LTM** (own Rust crate, claude-ltm blueprint) | categories, importance 1–5, decay, FTS5-first search, auto-extraction |
-| Memory storage | **LanceDB** (embedded, Apache 2.0) | vectors + FTS + hybrid search, no server required |
-| Coordination DB | **SQLite** | sessions, config, messages, Honker queues/cron |
-| Reactive layer | **Honker** (`honker-core` crate) | queues, NOTIFY/LISTEN, scheduled maintenance — **optional, add after v1.0** |
+| Memory model | **Talon LTM** (own Rust crate, claude-ltm blueprint) | categories, importance 1–5, decay, hybrid search, auto-extraction |
+| Vector storage | **sqlite-vec** (C ext, Apache-2.0, statically linked) | embeddings + brute-force KNN, in the same `talon.db` |
+| Keyword search | **FTS5** | BM25 over message/memory text (already in use) |
+| Embeddings | **fastembed** (all-MiniLM-L6-v2, ONNX) | behind `semantic-search` feature flag |
+| Reactive layer | **Honker** (`honker-core` crate) | NOTIFY/LISTEN + queues + cron — **optional, Phase 6** (replaces hand-rolled cron) |
 
-There are **two databases, not competing ones**: LanceDB owns *what the agent knows* (memories, facts, embeddings). SQLite owns *how the agent operates* (session state, config, task queues). They do not overlap.
+**One database, one file.** Everything — sessions, messages, FTS5, memories, vectors — lives in
+`~/.talon/talon.db`. A fact, its embedding, and its FTS index commit in a single transaction (no
+dual-write problem). Hybrid retrieval = FTS5 BM25 ⊕ sqlite-vec KNN, fused with RRF in Rust.
 
-**Redis is not a dependency.** Redis Iris patterns (two-tier memory, fact extraction, semantic dedup, semantic cache) are implemented in pure Rust via Talon LTM + LanceDB. The feature flag `redis-memory` was dropped.
+**Redis is not a dependency.** Redis Iris patterns (two-tier memory, fact extraction, semantic
+dedup, semantic cache) are implemented in pure Rust over SQLite + sqlite-vec.
 
 ### Error Handling
 
@@ -215,7 +219,7 @@ docker build -t talon:phase-N .
 | 1 | Core Agent Loop | ✅ Complete (2026-05-27) | Real LLM response, messages persisted to SQLite |
 | 1.5 | Additional LLM Providers | ✅ Complete (2026-05-28) | Codex, ClaudeCode, Antigravity + live smoke test, 219 tests green |
 | 2 | Memory (FTS5) | ✅ Complete (2026-05-27) | FTS5 search <50ms, context within token budget |
-| 2.5 | Talon LTM + LanceDB | ⬜ Not started | Auto fact recall across sessions |
+| 2.5 | Talon LTM + sqlite-vec | ⬜ Not started | Auto fact recall across sessions (one SQLite DB) |
 | 3 | Tools Tier 1 | ✅ Complete (2026-05-28) | 275 tests green; fs tools + Docker/native sandbox + TimeoutWrapper |
 | 4 | Gateway | ✅ Complete (2026-05-28) | CLI + Telegram + HTTP all functional; 349 tests green |
 | 5 | Tools Tier 2 + MCP | ✅ Complete (2026-05-29) | Tools built + registered; live smoke (real search/MCP) pending |

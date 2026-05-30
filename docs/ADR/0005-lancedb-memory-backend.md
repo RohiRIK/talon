@@ -1,6 +1,6 @@
 # ADR 0005 — LanceDB as Memory Storage Backend
 
-**Status:** Accepted  
+**Status:** ⚠️ Superseded by [ADR 0008 — SQLite + sqlite-vec](0008-sqlite-vec-memory-backend.md) (2026-05-30)
 **Date:** 2026-05-27
 
 ## Context

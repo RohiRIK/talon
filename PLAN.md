@@ -666,30 +666,32 @@ cargo dist build --release   # produces tarballs for all targets
 
 ---
 
-## Phase 2.5 — Talon LTM + LanceDB Memory Layer (Week 4–5, parallel with Phase 3)
+## Phase 2.5 — Talon LTM + sqlite-vec Memory Layer (Week 4–5, parallel with Phase 3)
 
 > **Edge:** Two-tier memory (working + long-term) with automatic fact extraction and semantic
-> deduplication. No other open-source agent does this in a single Rust binary.
+> deduplication, in a single Rust binary backed by one portable `.db` file.
 >
-> **Architecture decision (final):** LanceDB is the memory storage engine. SQLite remains for
-> sessions/config/coordination. Redis is NOT a dependency. The concepts from Redis Iris
-> (two-tier memory, fact extraction, semantic dedup, hybrid search, semantic cache) are implemented
-> in pure Rust via Talon LTM + LanceDB. See `CLAUDE.md` Memory Stack section for the full decision.
+> **Architecture decision (ADR 0008, supersedes 0005):** ONE SQLite database holds everything —
+> messages, FTS5, memories, and vectors. `sqlite-vec` (Apache-2.0 C extension, statically linked
+> into the bundled SQLite) provides vector KNN; FTS5 provides keyword search; hybrid retrieval fuses
+> them with RRF in Rust. No LanceDB, no Redis. A fact + its embedding + its FTS index commit in a
+> single transaction (no dual-write). See `CLAUDE.md` Memory Stack + ADR 0008.
 >
 > **Talon LTM** = own Rust crate (`crates/talon-memory/src/ltm/`), claude-ltm blueprint (doc #72).
->   Memory model: categories, importance 1–5, decay, FTS5-first search, auto-extraction.
-> **LanceDB** = embedded vector + FTS + hybrid search. No server. See doc #73.
-> **Honker** = optional reactive layer (queues, NOTIFY/LISTEN, cron) — add post-v1.0. See doc #76.
+>   Memory model: categories, importance 1–5, decay, hybrid search, auto-extraction.
+> **Embeddings** = `fastembed` (all-MiniLM-L6-v2, ONNX) behind `semantic-search` feature flag.
+> **Honker** = optional reactive layer (NOTIFY/LISTEN + queues + cron) — Phase 6, replaces the
+>   hand-rolled CronScheduler. Same DB, composes cleanly. See doc #76.
 
 ### Tasks
-- [ ] 2.5.1 Add `lancedb`, `arrow-array`, `tokio-stream` to `[workspace.dependencies]`
-- [ ] 2.5.2 `crates/talon-memory/src/lance_store.rs` — `LanceMemoryStore` impl of `MemoryStore` trait: LanceDB table `memories` with columns `(id, content, category, importance, created_at, accessed_at, decay_score, embedding BLOB)`. FTS via LanceDB's built-in full-text index.
+- [ ] 2.5.1 Deps: **drop** `lancedb` + `arrow-array` (and the `ltm` feature). Add `sqlite-vec`, `tokio-stream`, and `fastembed` (optional, `semantic-search` feature). Register the sqlite-vec extension into the bundled SQLite via `sqlite3_auto_extension` at `Database::open` so every pooled connection has `vec0`.
+- [ ] 2.5.2 `crates/talon-memory/src/ltm/store.rs` — `MemoryStore` over SQLite: `memories` table `(id, content, category, importance, created_at, accessed_at, decay_score, entities)`, `memories_fts` (FTS5 on content), and `vec_memories` (sqlite-vec `vec0`, `embedding float[384]`). All in `talon.db`; write fact + FTS row + vector in one transaction.
 - [ ] 2.5.3 `crates/talon-memory/src/ltm/mod.rs` — **Talon LTM** memory model: `Memory { id, content, category, importance: u8 (1–5), decay_score: f32, tags, entities }`. Categories: `user_preference`, `decision`, `fact`, `pattern`, `gotcha`.
 - [ ] 2.5.4 `crates/talon-memory/src/working.rs` — `WorkingMemory` struct: token-budgeted message window, auto-summarizes via LLM call when budget exceeded (claude-ltm two-tier pattern, doc #67)
 - [ ] 2.5.5 `crates/talon-memory/src/facts.rs` — `FactExtractor`: LLM-powered extraction per session end; produces `Vec<Memory>` with category, importance score, entities
-- [ ] 2.5.6 `crates/talon-memory/src/dedup.rs` — Semantic deduplication: embed new memories, cosine-compare against existing (threshold 0.85), merge duplicates instead of appending
-- [ ] 2.5.7 `crates/talon-memory/src/promotion.rs` — Memory promotion: post-session hook moves high-importance working memory facts → LanceDB long-term store
-- [ ] 2.5.8 `crates/talon-memory/src/hybrid_search.rs` — Hybrid retrieval: LanceDB vector KNN + FTS, fused with Reciprocal Rank Fusion (RRF)
+- [ ] 2.5.6 `crates/talon-memory/src/dedup.rs` — Semantic deduplication: embed new memories, sqlite-vec KNN cosine vs existing (threshold 0.85), merge duplicates instead of appending
+- [ ] 2.5.7 `crates/talon-memory/src/promotion.rs` — Memory promotion: post-session hook moves high-importance working-memory facts → the `memories` table (same DB)
+- [ ] 2.5.8 `crates/talon-memory/src/hybrid_search.rs` — Hybrid retrieval: FTS5 BM25 ⊕ sqlite-vec KNN, fused with Reciprocal Rank Fusion (RRF) in Rust
 - [ ] 2.5.9 `crates/talon-memory/src/cache.rs` — `SemanticCache`: embed LLM prompts, return cached response if similarity > 0.95. LRU in-memory with TTL. No Redis. (Iris LangCache pattern, doc #70)
 - [ ] 2.5.10 `crates/talon-memory/src/decay.rs` — `DecayEngine`: time-based importance decay, run as periodic task (once per day, not per query)
 - [ ] 2.5.11 Update `ContextBuilder` (Phase 2 task 2.7) to use `WorkingMemory::compact()` for auto-summarization instead of static window trimming
@@ -702,12 +704,13 @@ cargo nextest run -p talon-memory
 cargo run --release -- --message "remember that I prefer dark mode"
 # then in new session:
 cargo run --release -- --message "what do you know about my preferences?"
-# expects: recalls "prefers dark mode" via LanceDB hybrid search
+# expects: recalls "prefers dark mode" via FTS5 ⊕ sqlite-vec hybrid search
 ```
 
 ### Risks
 - LLM cost for automatic fact extraction — mitigate with semantic cache + batch extraction (once per session end, not per turn)
-- LanceDB Rust API stability (v0.9, pre-1.0) — pin version, test on upgrade
+- `sqlite-vec` Rust binding is alpha (0.1.x) over a stable C lib — pin version, keep the wrapper surface minimal; brute-force KNN is fine below ~100k vectors (personal scale never reaches that)
+- Statically registering the sqlite-vec extension with the bundled `rusqlite` (`sqlite3_auto_extension`) — validate early in 2.5.1; this is the one feasibility risk
 - Embedding model size — `fastembed` adds 30–60 MB; keep behind `semantic-search` feature flag
 - Fact extraction quality — LLM determines what's worth remembering; tune the extraction prompt carefully
 
@@ -754,9 +757,9 @@ cargo run --release -- --message "what do you know about my preferences?"
 - [ ] Parallel delegation spawns 3+ subagents, merged result
 - [ ] CI matrix green on linux/macos/windows
 - [ ] FTS5 session search returns results across projects
-- [ ] Two-tier memory (talon-ltm + LanceDB): auto fact extraction + semantic dedup operational
+- [ ] Two-tier memory (talon-ltm + sqlite-vec): auto fact extraction + semantic dedup operational
 - [ ] Semantic cache reduces repeated LLM calls (verified with cron test)
-- [ ] LanceDB hybrid search (vector KNN + FTS + RRF) returns ranked results across sessions
+- [ ] Hybrid search (FTS5 BM25 ⊕ sqlite-vec KNN + RRF) returns ranked results across sessions
 
 ## Beat the Competition
 
