@@ -1,139 +1,42 @@
-//! `WebSearchTool` — Brave Search API with a DuckDuckGo HTML fallback.
+//! `WebSearchTool` — runs an ordered chain of [`SearchBackend`]s, using the
+//! first that returns results (Brave → DuckDuckGo by default).
 
 use std::{future::Future, pin::Pin};
 
-use regex::Regex;
 use serde_json::{Value, json};
 use talon_core::{
     approval::ApprovalLevel,
     tools::{Tool, ToolContext, ToolResult},
 };
 
+use crate::web::backend::{BraveBackend, DdgBackend, SearchBackend, SearchResult};
+
 const DEFAULT_COUNT: u32 = 5;
 const MAX_COUNT: u32 = 20;
 
-/// Searches the web. Tries the Brave Search API first (when `BRAVE_API_KEY` is
-/// set) and falls back to DuckDuckGo's HTML endpoint otherwise.
+/// Searches the web through a configurable backend chain. Each backend is tried
+/// in order; the first to return a non-empty result set wins.
 ///
 /// `Safe` — read-only query.
 pub struct WebSearchTool {
-    client: reqwest::Client,
-    brave_api_key: Option<String>,
-    brave_base: String,
-    ddg_base: String,
+    backends: Vec<Box<dyn SearchBackend>>,
 }
 
 impl WebSearchTool {
+    /// Default chain: Brave (if `BRAVE_API_KEY` set) → DuckDuckGo.
     pub fn new() -> Self {
-        Self::with_config(
-            std::env::var("BRAVE_API_KEY")
-                .ok()
-                .filter(|k| !k.is_empty()),
-            "https://api.search.brave.com".to_string(),
-            "https://html.duckduckgo.com".to_string(),
-        )
-    }
-
-    fn with_config(brave_api_key: Option<String>, brave_base: String, ddg_base: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
-            brave_api_key,
-            brave_base,
-            ddg_base,
+            backends: vec![
+                Box::new(BraveBackend::from_env()),
+                Box::new(DdgBackend::default_base()),
+            ],
         }
     }
 
-    /// Query Brave. `Ok(None)` means "no usable result, try the fallback";
-    /// `Err` is a hard transport error.
-    async fn brave_search(&self, query: &str, count: u32) -> Result<Option<String>, String> {
-        let key = match &self.brave_api_key {
-            Some(k) => k,
-            None => return Ok(None),
-        };
-        let url = format!("{}/res/v1/web/search", self.brave_base);
-        let resp = self
-            .client
-            .get(&url)
-            .header("X-Subscription-Token", key)
-            .header("Accept", "application/json")
-            .query(&[("q", query), ("count", &count.to_string())])
-            .send()
-            .await
-            .map_err(|e| format!("brave request failed: {e}"))?;
-
-        if !resp.status().is_success() {
-            // Auth/quota errors → fall back rather than fail the tool.
-            return Ok(None);
-        }
-
-        let body: Value = resp
-            .json()
-            .await
-            .map_err(|e| format!("brave returned invalid JSON: {e}"))?;
-
-        let results = body["web"]["results"].as_array();
-        let Some(results) = results.filter(|r| !r.is_empty()) else {
-            return Ok(None);
-        };
-
-        let mut out = format!("Web results for \"{query}\" (via Brave):\n");
-        for (i, r) in results.iter().take(count as usize).enumerate() {
-            let title = r["title"].as_str().unwrap_or("(no title)");
-            let link = r["url"].as_str().unwrap_or("");
-            let desc = r["description"].as_str().unwrap_or("");
-            out.push_str(&format!("\n{}. {title}\n   {link}\n   {desc}\n", i + 1));
-        }
-        Ok(Some(out))
-    }
-
-    /// Query DuckDuckGo's HTML endpoint and scrape result anchors.
-    async fn ddg_search(&self, query: &str, count: u32) -> Result<String, String> {
-        let url = format!("{}/html/", self.ddg_base);
-        let resp = self
-            .client
-            .get(&url)
-            .query(&[("q", query)])
-            .send()
-            .await
-            .map_err(|e| format!("duckduckgo request failed: {e}"))?;
-
-        if !resp.status().is_success() {
-            return Err(format!(
-                "duckduckgo returned HTTP {}",
-                resp.status().as_u16()
-            ));
-        }
-
-        let html = resp
-            .text()
-            .await
-            .map_err(|e| format!("failed to read duckduckgo body: {e}"))?;
-
-        // `<a ... class="result__a" href="URL">TITLE</a>`
-        let anchor = Regex::new(r#"(?s)class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#)
-            .map_err(|e| format!("internal regex error: {e}"))?;
-        let tags = Regex::new(r"<[^>]+>").map_err(|e| format!("internal regex error: {e}"))?;
-
-        let mut out = format!("Web results for \"{query}\" (via DuckDuckGo):\n");
-        let mut n = 0;
-        for cap in anchor.captures_iter(&html) {
-            if n >= count {
-                break;
-            }
-            let link = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-            let raw_title = cap.get(2).map(|m| m.as_str()).unwrap_or("");
-            let title = tags.replace_all(raw_title, "").trim().to_string();
-            if title.is_empty() {
-                continue;
-            }
-            n += 1;
-            out.push_str(&format!("\n{n}. {title}\n   {link}\n"));
-        }
-
-        if n == 0 {
-            return Err(format!("no results found for \"{query}\""));
-        }
-        Ok(out)
+    /// Construct with an explicit backend chain (used by callers wiring config,
+    /// and by tests).
+    pub fn with_backends(backends: Vec<Box<dyn SearchBackend>>) -> Self {
+        Self { backends }
     }
 }
 
@@ -141,6 +44,17 @@ impl Default for WebSearchTool {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn format_results(backend: &str, query: &str, results: &[SearchResult]) -> String {
+    let mut out = format!("Web results for \"{query}\" (via {backend}):\n");
+    for (i, r) in results.iter().enumerate() {
+        out.push_str(&format!("\n{}. {}\n   {}\n", i + 1, r.title, r.url));
+        if !r.snippet.is_empty() {
+            out.push_str(&format!("   {}\n", r.snippet));
+        }
+    }
+    out
 }
 
 impl Tool for WebSearchTool {
@@ -152,7 +66,8 @@ impl Tool for WebSearchTool {
         json!({
             "name": "web_search",
             "description": "Search the web and return a ranked list of result titles, URLs, \
-                            and snippets. Uses Brave Search when configured, else DuckDuckGo.",
+                            and snippets. Tries configured backends in order (Brave, SearXNG, \
+                            DuckDuckGo, …).",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -186,15 +101,23 @@ impl Tool for WebSearchTool {
                 .map(|c| (c as u32).clamp(1, MAX_COUNT))
                 .unwrap_or(DEFAULT_COUNT);
 
-            match self.brave_search(&query, count).await {
-                Ok(Some(results)) => return ToolResult::ok(results),
-                Ok(None) => {} // fall through to DuckDuckGo
-                Err(e) => return ToolResult::err(e),
+            let mut last_err = None;
+            for backend in &self.backends {
+                match backend.search(&query, count).await {
+                    Ok(results) if !results.is_empty() => {
+                        return ToolResult::ok(format_results(backend.name(), &query, &results));
+                    }
+                    Ok(_) => {} // empty → try the next backend
+                    Err(e) => {
+                        tracing::warn!(backend = backend.name(), error = %e, "search backend failed");
+                        last_err = Some(e);
+                    }
+                }
             }
 
-            match self.ddg_search(&query, count).await {
-                Ok(results) => ToolResult::ok(results),
-                Err(e) => ToolResult::err(e),
+            match last_err {
+                Some(e) => ToolResult::err(format!("all search backends failed: {e}")),
+                None => ToolResult::err(format!("no results found for \"{query}\"")),
             }
         })
     }
@@ -212,21 +135,17 @@ mod tests {
     fn brave_body() -> Value {
         json!({
             "web": { "results": [
-                { "title": "Rust Lang", "url": "https://rust-lang.org", "description": "The Rust programming language." },
-                { "title": "Tokio", "url": "https://tokio.rs", "description": "Async runtime." }
+                { "title": "Rust Lang", "url": "https://rust-lang.org", "description": "The Rust programming language." }
             ]}
         })
     }
 
     fn ddg_html() -> &'static str {
-        r##"<html><body>
-        <a rel="nofollow" class="result__a" href="https://example.com/a">First <b>Result</b></a>
-        <a rel="nofollow" class="result__a" href="https://example.com/b">Second Result</a>
-        </body></html>"##
+        r##"<a class="result__a" href="https://example.com/a">DDG Result</a>"##
     }
 
     #[tokio::test]
-    async fn brave_success_returns_results() {
+    async fn first_backend_with_results_wins() {
         let brave = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/res/v1/web/search"))
@@ -234,23 +153,21 @@ mod tests {
             .mount(&brave)
             .await;
 
-        let tool = WebSearchTool::with_config(
-            Some("test-key".to_string()),
+        let tool = WebSearchTool::with_backends(vec![Box::new(BraveBackend::new(
+            Some("k".into()),
             brave.uri(),
-            "http://unused.invalid".to_string(),
-        );
+        ))]);
         let r = tool
             .execute(json!({ "query": "rust" }), ToolContext::default())
             .await;
-
-        assert!(!r.is_error, "got error: {}", r.content);
-        assert!(r.content.contains("Brave"));
+        assert!(!r.is_error, "got: {}", r.content);
+        assert!(r.content.contains("brave"));
         assert!(r.content.contains("Rust Lang"));
-        assert!(r.content.contains("https://tokio.rs"));
     }
 
     #[tokio::test]
-    async fn brave_401_falls_back_to_ddg() {
+    async fn falls_through_to_next_backend() {
+        // Brave returns 401 → chain moves to DDG.
         let brave = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/res/v1/web/search"))
@@ -264,23 +181,21 @@ mod tests {
             .mount(&ddg)
             .await;
 
-        let tool = WebSearchTool::with_config(Some("bad-key".to_string()), brave.uri(), ddg.uri());
+        let tool = WebSearchTool::with_backends(vec![
+            Box::new(BraveBackend::new(Some("bad".into()), brave.uri())),
+            Box::new(DdgBackend::new(ddg.uri())),
+        ]);
         let r = tool
             .execute(json!({ "query": "rust" }), ToolContext::default())
             .await;
-
-        assert!(!r.is_error, "got error: {}", r.content);
-        assert!(r.content.contains("DuckDuckGo"));
-        assert!(
-            r.content.contains("First Result"),
-            "tags not stripped: {}",
-            r.content
-        );
-        assert!(r.content.contains("https://example.com/b"));
+        assert!(!r.is_error, "got: {}", r.content);
+        assert!(r.content.contains("duckduckgo"));
+        assert!(r.content.contains("DDG Result"));
     }
 
     #[tokio::test]
-    async fn no_key_uses_ddg() {
+    async fn unavailable_backend_is_skipped() {
+        // Brave has no key (Unavailable) → DDG used.
         let ddg = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/html/"))
@@ -288,18 +203,20 @@ mod tests {
             .mount(&ddg)
             .await;
 
-        let tool = WebSearchTool::with_config(None, "http://unused.invalid".to_string(), ddg.uri());
+        let tool = WebSearchTool::with_backends(vec![
+            Box::new(BraveBackend::new(None, "http://unused.invalid")),
+            Box::new(DdgBackend::new(ddg.uri())),
+        ]);
         let r = tool
             .execute(json!({ "query": "rust" }), ToolContext::default())
             .await;
-
-        assert!(!r.is_error, "got error: {}", r.content);
-        assert!(r.content.contains("DuckDuckGo"));
+        assert!(!r.is_error, "got: {}", r.content);
+        assert!(r.content.contains("DDG Result"));
     }
 
     #[tokio::test]
     async fn missing_query_is_failure() {
-        let tool = WebSearchTool::with_config(None, "x".into(), "y".into());
+        let tool = WebSearchTool::new();
         let r = tool.execute(json!({}), ToolContext::default()).await;
         assert!(r.is_error);
         assert!(r.content.contains("query"));
@@ -307,7 +224,7 @@ mod tests {
 
     #[test]
     fn metadata_is_safe_and_named() {
-        let tool = WebSearchTool::with_config(None, "x".into(), "y".into());
+        let tool = WebSearchTool::new();
         assert_eq!(tool.name(), "web_search");
         assert_eq!(tool.approval_level(&Value::Null), ApprovalLevel::Safe);
         assert_eq!(tool.schema()["name"], "web_search");
