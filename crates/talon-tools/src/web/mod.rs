@@ -2,10 +2,14 @@
 
 pub mod backend;
 pub mod extract;
+pub mod fetch;
+pub mod firecrawl;
 pub mod search;
 pub mod searxng;
 
 pub use backend::{BraveBackend, DdgBackend, SearchBackend, SearchError, SearchResult};
 pub use extract::WebExtractTool;
+pub use fetch::{FetchBackend, FetchError, FirecrawlFetch, NativeFetch};
+pub use firecrawl::FirecrawlBackend;
 pub use search::WebSearchTool;
 pub use searxng::SearxngBackend;

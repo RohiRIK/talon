@@ -1,30 +1,35 @@
-//! `WebExtractTool` — fetch a URL and return its readable article text.
+//! `WebExtractTool` — turn a URL into readable content through an ordered
+//! [`FetchBackend`] chain (native Rust floor → browser/firecrawl escalation).
 
 use std::{future::Future, pin::Pin};
 
-use dom_smoothie::{Config, Readability, TextMode};
 use serde_json::{Value, json};
 use talon_core::{
     approval::ApprovalLevel,
     tools::{Tool, ToolContext, ToolResult},
 };
 
-/// Max HTML bytes to buffer before bailing — guards against huge pages.
-const MAX_BYTES: usize = 5 * 1024 * 1024; // 5 MB
+use crate::web::fetch::{FetchBackend, NativeFetch};
 
-/// Fetches a web page and returns its main readable content, with navigation,
-/// ads, and scripts stripped via a Readability port (`dom_smoothie`).
+/// Fetches a web page and returns its main readable content. Tries each
+/// configured backend in order; the first non-empty result wins.
 ///
 /// `Safe` — read-only HTTP GET.
 pub struct WebExtractTool {
-    client: reqwest::Client,
+    backends: Vec<Box<dyn FetchBackend>>,
 }
 
 impl WebExtractTool {
+    /// Default chain: native Rust (reqwest + readability) only.
     pub fn new() -> Self {
         Self {
-            client: reqwest::Client::new(),
+            backends: vec![Box::new(NativeFetch::new())],
         }
+    }
+
+    /// Construct with an explicit fetch chain (config wiring + tests).
+    pub fn with_backends(backends: Vec<Box<dyn FetchBackend>>) -> Self {
+        Self { backends }
     }
 }
 
@@ -66,68 +71,27 @@ impl Tool for WebExtractTool {
         args: Value,
         _ctx: ToolContext,
     ) -> Pin<Box<dyn Future<Output = ToolResult> + Send + '_>> {
-        let client = self.client.clone();
         Box::pin(async move {
             let url = match args["url"].as_str() {
                 Some(u) if !u.is_empty() => u.to_string(),
                 _ => return ToolResult::err("missing required argument: url"),
             };
 
-            let resp = match client.get(&url).send().await {
-                Ok(r) => r,
-                Err(e) => return ToolResult::err(format!("request to '{url}' failed: {e}")),
-            };
-
-            if !resp.status().is_success() {
-                return ToolResult::err(format!(
-                    "'{url}' returned HTTP {}",
-                    resp.status().as_u16()
-                ));
-            }
-
-            // Reject oversized pages before buffering the whole body.
-            if let Some(len) = resp.content_length()
-                && len as usize > MAX_BYTES
-            {
-                return ToolResult::err(format!(
-                    "'{url}' body is {len} bytes — exceeds 5 MB limit"
-                ));
-            }
-
-            let html = match resp.text().await {
-                Ok(b) => b,
-                Err(e) => return ToolResult::err(format!("failed to read body of '{url}': {e}")),
-            };
-
-            if html.len() > MAX_BYTES {
-                return ToolResult::err(format!("'{url}' body exceeds 5 MB limit"));
-            }
-
-            let cfg = Config {
-                text_mode: TextMode::Formatted,
-                ..Default::default()
-            };
-
-            let mut readability =
-                match Readability::new(html.as_str(), Some(url.as_str()), Some(cfg)) {
-                    Ok(r) => r,
-                    Err(e) => return ToolResult::err(format!("could not parse '{url}': {e}")),
-                };
-
-            match readability.parse() {
-                Ok(article) => {
-                    let title = article.title.trim();
-                    let body = article.text_content.trim();
-                    let out = if title.is_empty() {
-                        body.to_string()
-                    } else {
-                        format!("# {title}\n\n{body}")
-                    };
-                    ToolResult::ok(out)
+            let mut last_err = None;
+            for backend in &self.backends {
+                match backend.fetch(&url).await {
+                    Ok(content) if !content.is_empty() => return ToolResult::ok(content),
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(backend = backend.name(), error = %e, "fetch backend failed");
+                        last_err = Some(e);
+                    }
                 }
-                Err(e) => ToolResult::err(format!(
-                    "could not extract readable content from '{url}': {e}"
-                )),
+            }
+
+            match last_err {
+                Some(e) => ToolResult::err(format!("could not fetch '{url}': {e}")),
+                None => ToolResult::err(format!("no content for '{url}'")),
             }
         })
     }
@@ -139,11 +103,10 @@ impl Tool for WebExtractTool {
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use crate::web::fetch::FetchError;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    /// A page with enough article prose for Readability to "grab" it,
-    /// wrapped in nav/footer boilerplate that should be stripped.
     fn article_html() -> String {
         let para = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod \
             tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis \
@@ -153,7 +116,7 @@ mod tests {
              <nav>Home About Contact Login Signup</nav>\
              <article><h1>The Headline</h1>\
              <p>{para}</p><p>{para}</p><p>{para}</p><p>{para}</p></article>\
-             <footer>Copyright 2026 — all rights reserved</footer></body></html>"
+             <footer>Copyright 2026</footer></body></html>"
         )
     }
 
@@ -165,7 +128,6 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_string(article_html()))
             .mount(&server)
             .await;
-
         let tool = WebExtractTool::new();
         let r = tool
             .execute(
@@ -173,18 +135,9 @@ mod tests {
                 ToolContext::default(),
             )
             .await;
-
         assert!(!r.is_error, "expected success, got: {}", r.content);
-        assert!(
-            r.content.contains("Lorem ipsum"),
-            "readable body missing: {}",
-            r.content
-        );
-        // Boilerplate must be stripped.
-        assert!(
-            !r.content.contains("Home About Contact"),
-            "nav not stripped"
-        );
+        assert!(r.content.contains("Lorem ipsum"));
+        assert!(!r.content.contains("Home About Contact"));
     }
 
     #[tokio::test]
@@ -194,7 +147,6 @@ mod tests {
             .respond_with(ResponseTemplate::new(500))
             .mount(&server)
             .await;
-
         let tool = WebExtractTool::new();
         let r = tool
             .execute(
@@ -202,13 +154,8 @@ mod tests {
                 ToolContext::default(),
             )
             .await;
-
         assert!(r.is_error);
-        assert!(
-            r.content.contains("500"),
-            "expected HTTP 500 in: {}",
-            r.content
-        );
+        assert!(r.content.contains("500"), "got: {}", r.content);
     }
 
     #[tokio::test]
@@ -217,6 +164,42 @@ mod tests {
         let r = tool.execute(json!({}), ToolContext::default()).await;
         assert!(r.is_error);
         assert!(r.content.contains("url"));
+    }
+
+    /// A failing native floor escalates to the next backend in the chain.
+    #[tokio::test]
+    async fn escalates_to_next_backend() {
+        struct FailFetch;
+        impl FetchBackend for FailFetch {
+            fn name(&self) -> &str {
+                "fail"
+            }
+            fn fetch<'a>(
+                &'a self,
+                _url: &'a str,
+            ) -> Pin<Box<dyn Future<Output = Result<String, FetchError>> + Send + 'a>> {
+                Box::pin(async { Err(FetchError::Empty("nope".into())) })
+            }
+        }
+        struct OkFetch;
+        impl FetchBackend for OkFetch {
+            fn name(&self) -> &str {
+                "ok"
+            }
+            fn fetch<'a>(
+                &'a self,
+                _url: &'a str,
+            ) -> Pin<Box<dyn Future<Output = Result<String, FetchError>> + Send + 'a>> {
+                Box::pin(async { Ok("escalated content".to_string()) })
+            }
+        }
+
+        let tool = WebExtractTool::with_backends(vec![Box::new(FailFetch), Box::new(OkFetch)]);
+        let r = tool
+            .execute(json!({ "url": "https://x.test" }), ToolContext::default())
+            .await;
+        assert!(!r.is_error, "got: {}", r.content);
+        assert_eq!(r.content, "escalated content");
     }
 
     #[test]
