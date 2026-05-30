@@ -95,11 +95,13 @@ impl Tool for SubprocessPlugin {
                 }
             };
 
-            // Send the request and close stdin so the plugin sees EOF.
-            if let Some(mut stdin) = child.stdin.take()
-                && let Err(e) = stdin.write_all(line.as_bytes()).await
-            {
-                return ToolResult::err(format!("failed to write to plugin '{command}': {e}"));
+            // Best-effort: send the request, then drop stdin to signal EOF. A
+            // plugin that ignores stdin (and may have already exited) causes a
+            // broken pipe on some platforms — that is not a tool failure; the
+            // child's stdout and exit status are the source of truth.
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(line.as_bytes()).await;
+                let _ = stdin.flush().await;
             }
 
             let output = match child.wait_with_output().await {

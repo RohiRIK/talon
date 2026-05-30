@@ -25,6 +25,11 @@ allow = [
     "Unicode-3.0",
     # CDLA-Permissive-2.0: Linux Foundation permissive license used by webpki-roots (TLS roots)
     "CDLA-Permissive-2.0",
+    # MPL-2.0: weak (file-level) copyleft, OSI-approved. Used only by Servo CSS
+    # crates (selectors, cssparser, cssparser-macros, dtoa-short) pulled in
+    # transitively by dom_smoothie for HTML parsing. We link them unmodified,
+    # which MPL-2.0 permits.
+    "MPL-2.0",
 ]
 
 exceptions = []
