@@ -1,6 +1,6 @@
 # Embedding-Based Retrieval
 
-> **Status:** ✅ Complete
+> **Status:** Spec aligned with the memory decision — [ADR 0008: SQLite + sqlite-vec](../ADR/0008-sqlite-vec-memory-backend.md) (supersedes the LanceDB ADR 0005). This file already specced `sqlite-vec`; ADR 0008 makes the project-wide decision match it.
 > **Category:** Memory System
 
 ---
@@ -68,33 +68,41 @@ The default model `AllMiniLML6V2` produces 384-dimensional vectors and is
 ## 3. Vector Storage (sqlite-vec)
 
 Rather than a separate vector database, Talon uses `sqlite-vec` — a SQLite
-extension that adds vector similarity search to SQLite:
+extension that adds vector similarity search to the **same** `talon.db`. A fact,
+its FTS5 row, and its embedding commit in one transaction (no dual-write).
+
+**Single-binary requirement:** the extension is **statically compiled in** (the
+`sqlite-vec` crate bundles the C source) and registered as an *auto-extension*
+**before** any pooled connection is opened — never `load_extension` from an
+external `.so`, which would break the single-binary guarantee. Register once at
+`Database::open`:
 
 ```rust
-pub fn init_vector_tables(conn: &Connection) -> Result<(), rusqlite::Error> {
-    // Load sqlite-vec extension
-    unsafe {
-        conn.load_extension(
-            Path::new("vec0"),
-            Some("sqlite3_vec_init")
-        )?;
-    }
-
-    conn.execute_batch(r#"
-        CREATE VIRTUAL TABLE IF NOT EXISTS memory_vecs USING vec0(
-            embedding float[384]
-        );
-
-        CREATE TABLE IF NOT EXISTS memory_entries (
-            id          INTEGER PRIMARY KEY,
-            content     TEXT NOT NULL,
-            source      TEXT NOT NULL,    -- 'session' | 'memory_md' | 'skill'
-            created_at  INTEGER NOT NULL
-        );
-    "#)?;
-    Ok(())
+// Once, before the deadpool pool opens any connection. Applies to all
+// connections opened afterwards.
+unsafe {
+    rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+        sqlite_vec::sqlite3_vec_init as *const (),
+    )));
 }
+```
 
+Then the schema (canonical names in PLAN.md task 2.5.2 — `memories`,
+`memories_fts`, `vec_memories`):
+
+```rust
+conn.execute_batch(r#"
+    CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories USING vec0(
+        embedding float[384]
+    );
+    -- `memories` / `memories_fts` are created by the SQLite migration set.
+"#)?;
+```
+
+> The example below uses illustrative table names; the canonical schema
+> (`memories`, `memories_fts`, `vec_memories`) lives in PLAN.md task 2.5.2.
+
+```rust
 pub fn upsert_embedding(
     conn: &Connection,
     content: &str,

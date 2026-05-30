@@ -1,5 +1,9 @@
 # 73 — LanceDB: Embedded Vector + FTS Database
 
+> ⚠️ **Historical analysis — NOT the current decision.** Talon adopted **SQLite + sqlite-vec**
+> instead; see [ADR 0008](../../ADR/0008-sqlite-vec-memory-backend.md) (supersedes ADR 0005). This
+> doc is kept for the evaluation record only.
+
 > **Repo:** [lancedb/lancedb](https://github.com/lancedb/lancedb)  
 > **Language:** Rust core, Rust/Python/JS SDKs  
 > **Architecture:** Embedded (in-process, like SQLite)  

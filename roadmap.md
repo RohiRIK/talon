@@ -82,12 +82,12 @@ Phase 7 (Advanced: Subagents, ACP, Evolution) ← v2
 
 | Phase | Tasks | Exit Gate |
 |-------|-------|-----------|
-| **Phase 2.5** | talon-ltm memory model, LanceDB storage, fact extraction, semantic dedup, hybrid search, semantic cache | Auto fact recall across sessions, cache hit on repeated prompts |
+| **Phase 2.5** | talon-ltm memory model, sqlite-vec storage, fact extraction, semantic dedup, hybrid search, semantic cache | Auto fact recall across sessions, cache hit on repeated prompts |
 | **Phase 3** *(parallel)* | ReadFile, WriteFile, EditFile, Glob, Grep, Terminal+Docker sandbox, seccomp | `rm -rf /` blocked, all file tools functional |
 
 **Why parallel:** Phase 2.5 (memory) and Phase 3 (tools) are independent — memory extends the MemoryStore trait, tools extend the Tool trait. No cross-dependency.
 
-**Memory stack decision:** LanceDB is the embedded memory storage engine (vectors + FTS + hybrid search). Redis is NOT a dependency. See `CLAUDE.md` for the full architecture decision.
+**Memory stack decision (ADR 0008, supersedes 0005):** ONE SQLite DB holds everything — `sqlite-vec` for vectors + FTS5 for keyword + RRF fusion in Rust. No LanceDB, no Redis. See `CLAUDE.md` Memory Stack + ADR 0008.
 
 ### Weeks 5–6 — The Agent Talks Everywhere 🖥
 
