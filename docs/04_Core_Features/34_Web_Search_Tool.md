@@ -115,15 +115,13 @@ Timeouts (task 5.9): web = 30s, browser = 60s (`TimeoutWrapper` at registration)
 
 ## 6. Implementation status & next steps
 
-**Shipped (Phase 5):** `web_search` (Brave→DDG), `web_extract` (native Readability), `browser_open` (headless Chrome, feature-gated), per-class timeouts, registration in `build_gateway_context`.
+**Shipped (Phase 5 + 5.1):**
+- `SearchBackend` chain (`web/backend.rs`): `BraveBackend`, `DdgBackend`, `SearxngBackend` (`web/searxng.rs`), `FirecrawlBackend` (`web/firecrawl.rs`). `WebSearchTool` tries them in configured order; first non-empty wins.
+- `FetchBackend` chain (`web/fetch.rs`): `NativeFetch` (reqwest + dom_smoothie, the floor), `BrowserFetch` (`feature="browser"`), `FirecrawlFetch`. `WebExtractTool` escalates native → next on empty/err.
+- `[tools.web]` config (`web/config.rs`): `search_backends` / `fetch_backends` order + `[tools.web.{searxng,firecrawl}]` URLs; assembled in `build_gateway_context`. Keys from env (Brave `BRAVE_API_KEY`, Firecrawl `FIRECRAWL_API_KEY`/`FIRECRAWL_API_URL`).
+- `browser_open` tool (headless Chrome, feature-gated), per-class timeouts.
 
-**Planned (this design):**
-1. Refactor `WebSearchTool` to the `SearchBackend` trait + ordered chain (lift current Brave/DDG into backends).
-2. Add `SearxngBackend` (keyless, self-host) and `FirecrawlBackend` (cloud/self-host) search backends.
-3. Introduce `FetchBackend` for `web_extract` with `native → browser → firecrawl` escalation.
-4. Add the `[tools.web]` config schema above; resolve keys via env → OS keychain.
-
-These are additive — the native Rust fetch remains the dependency-free default; every external service is opt-in.
+Native Rust fetch is the dependency-free default; every external service is opt-in via config. **Next:** resolve keys via OS keychain (not just env); optional `firecrawl` in default search order once a key-presence probe gates it.
 
 ---
 

@@ -12,6 +12,7 @@ use talon_gateway::{Gateway, GatewayContext, cli::CliGateway, http::HttpGateway,
 use talon_llm::{AnthropicProvider, GitHubCopilotProvider, LlmProvider};
 use talon_memory::{Database, SqliteStore};
 use talon_tools::mcp::{McpClient, McpServersConfig, adapt_server};
+use talon_tools::web::WebConfig;
 use talon_tools::{SessionSearchTool, WebExtractTool, WebSearchTool, timeouts};
 
 // ── CLI definition ────────────────────────────────────────────────────────────
@@ -353,13 +354,19 @@ async fn build_gateway_context(provider_name: &str, api_key: String) -> Result<G
     ctx = ctx.with_tool(Arc::new(EchoTool));
     ctx = ctx.with_tool(Arc::new(ReadFileTool));
 
-    // Phase 5 web tools (Safe), each with the web wall-clock timeout.
+    // Phase 5 web tools (Safe) — backend chains assembled from [tools.web] in
+    // ~/.talon/config.toml (defaults: Brave→DDG search, native-only fetch).
+    let web_cfg = WebConfig::load(
+        &talon_home()
+            .map(|p| p.join("config.toml"))
+            .unwrap_or_default(),
+    );
     ctx = ctx.with_tool(timeouts::with_timeout(
-        WebSearchTool::new(),
+        WebSearchTool::with_backends(web_cfg.build_search_chain()),
         timeouts::WEB_TIMEOUT_SECS,
     ));
     ctx = ctx.with_tool(timeouts::with_timeout(
-        WebExtractTool::new(),
+        WebExtractTool::with_backends(web_cfg.build_fetch_chain()),
         timeouts::WEB_TIMEOUT_SECS,
     ));
 
