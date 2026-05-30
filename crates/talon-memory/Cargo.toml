@@ -1,6 +1,6 @@
 [package]
 name        = "talon-memory"
-description = "Talon memory layer — SQLite/FTS5 sessions, LanceDB LTM, working memory, fact extraction."
+description = "Talon memory layer — one SQLite DB: FTS5 + sqlite-vec LTM, working memory, fact extraction."
 version.workspace     = true
 edition.workspace     = true
 authors.workspace     = true
@@ -21,13 +21,7 @@ tracing.workspace       = true
 uuid.workspace          = true
 chrono.workspace        = true
 
-[dependencies.lancedb]
-workspace = true
-optional  = true
-
-[dependencies.arrow-array]
-workspace = true
-optional  = true
-
-[features]
-ltm = ["dep:lancedb", "dep:arrow-array"]
+# Vector memory — sqlite-vec extension (statically compiled in) + zerocopy for
+# &[f32] → blob serialization into the vec0 table. ADR 0008.
+sqlite-vec.workspace    = true
+zerocopy.workspace      = true

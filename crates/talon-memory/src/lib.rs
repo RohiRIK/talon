@@ -11,9 +11,30 @@ pub use files::{MemoryMd, UserMd};
 pub use sqlite_store::SqliteStore;
 pub use store::MemoryStore;
 
+use std::sync::Once;
+
 use deadpool_sqlite::{Config, Pool, Runtime};
 use rusqlite::params;
 use thiserror::Error;
+
+/// Register the `sqlite-vec` extension exactly once, as a SQLite *auto-extension*
+/// so every connection opened afterwards — including pooled ones — gets the
+/// `vec0` virtual table. Statically compiled in (no external `.so`). See ADR 0008.
+static VEC_INIT: Once = Once::new();
+
+fn register_sqlite_vec() {
+    VEC_INIT.call_once(|| {
+        // Safety: `sqlite3_vec_init` is the extension entry point; registering it
+        // as an auto-extension is the documented sqlite-vec + rusqlite pattern.
+        // Run exactly once via `Once`, before any connection is opened.
+        #[allow(clippy::missing_transmute_annotations)]
+        unsafe {
+            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+                sqlite_vec::sqlite3_vec_init as *const (),
+            )));
+        }
+    });
+}
 
 /// Type #3 — SQLite connection pool wrapper.
 ///
@@ -28,6 +49,8 @@ pub struct Database {
 impl Database {
     /// Open (or create) the SQLite database at the given path.
     pub fn open(path: &str) -> Result<Self, MemoryError> {
+        // Register sqlite-vec before the pool opens any connection.
+        register_sqlite_vec();
         let pool = Config::new(path)
             .create_pool(Runtime::Tokio1)
             .map_err(|e| MemoryError::MigrationFailed(e.to_string()))?;
@@ -267,6 +290,58 @@ mod tests {
     #[test]
     fn database_open_in_memory_succeeds() {
         assert!(Database::open(":memory:").is_ok());
+    }
+
+    /// Spike (task 2.5.1): the statically-registered sqlite-vec extension is
+    /// available on every pooled connection — `vec_version()` resolves.
+    #[tokio::test]
+    async fn sqlite_vec_extension_loads_through_pool() {
+        let db = Database::open(":memory:").expect("open");
+        let version: String = db
+            .pool()
+            .get()
+            .await
+            .expect("pool")
+            .interact(|conn| conn.query_row("SELECT vec_version()", [], |r| r.get::<_, String>(0)))
+            .await
+            .expect("interact")
+            .expect("vec_version");
+        assert!(!version.is_empty(), "vec_version returned empty");
+    }
+
+    /// vec0 virtual tables can be created and KNN-queried via the pool.
+    #[tokio::test]
+    async fn vec0_table_roundtrips_knn() {
+        use zerocopy::IntoBytes;
+        let db = Database::open(":memory:").expect("open");
+        db.pool()
+            .get()
+            .await
+            .expect("pool")
+            .interact(|conn| -> rusqlite::Result<()> {
+                conn.execute_batch("CREATE VIRTUAL TABLE vt USING vec0(embedding float[3]);")?;
+                let a: Vec<f32> = vec![1.0, 0.0, 0.0];
+                let b: Vec<f32> = vec![0.0, 1.0, 0.0];
+                conn.execute(
+                    "INSERT INTO vt(rowid, embedding) VALUES (1, ?1)",
+                    [a.as_bytes()],
+                )?;
+                conn.execute(
+                    "INSERT INTO vt(rowid, embedding) VALUES (2, ?1)",
+                    [b.as_bytes()],
+                )?;
+                let query: Vec<f32> = vec![0.9, 0.1, 0.0];
+                let nearest: i64 = conn.query_row(
+                    "SELECT rowid FROM vt WHERE embedding MATCH ?1 ORDER BY distance LIMIT 1",
+                    [query.as_bytes()],
+                    |r| r.get(0),
+                )?;
+                assert_eq!(nearest, 1, "nearest to [0.9,0.1,0] should be row 1");
+                Ok(())
+            })
+            .await
+            .expect("interact")
+            .expect("vec0 roundtrip");
     }
 
     #[test]
