@@ -8,7 +8,7 @@ use std::pin::Pin;
 
 use serde_json::{Value, json};
 
-use crate::web::backend::{SearchBackend, SearchError, SearchResult};
+use crate::web::backend::{SearchBackend, SearchError, SearchResult, result_from, send_json};
 
 const CLOUD_BASE: &str = "https://api.firecrawl.dev";
 
@@ -61,21 +61,9 @@ impl FirecrawlBackend {
     /// Scrape a URL and return its rendered markdown. Used by the fetch chain.
     pub async fn scrape(&self, url: &str) -> Result<String, SearchError> {
         self.ensure_available()?;
-        let resp = self
-            .post("/v1/scrape", json!({ "url": url, "formats": ["markdown"] }))
-            .send()
-            .await
-            .map_err(|e| SearchError::Transport(e.to_string()))?;
-        if !resp.status().is_success() {
-            return Err(SearchError::Transport(format!(
-                "HTTP {}",
-                resp.status().as_u16()
-            )));
-        }
-        let body: Value = resp
-            .json()
-            .await
-            .map_err(|e| SearchError::Parse(e.to_string()))?;
+        let body =
+            send_json(self.post("/v1/scrape", json!({ "url": url, "formats": ["markdown"] })))
+                .await?;
         match body["data"]["markdown"].as_str() {
             Some(md) if !md.is_empty() => Ok(md.to_string()),
             _ => Err(SearchError::Parse(
@@ -97,31 +85,15 @@ impl SearchBackend for FirecrawlBackend {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SearchResult>, SearchError>> + Send + 'a>> {
         Box::pin(async move {
             self.ensure_available()?;
-            let resp = self
-                .post("/v1/search", json!({ "query": query, "limit": count }))
-                .send()
-                .await
-                .map_err(|e| SearchError::Transport(e.to_string()))?;
-            if !resp.status().is_success() {
-                return Err(SearchError::Transport(format!(
-                    "HTTP {}",
-                    resp.status().as_u16()
-                )));
-            }
-            let body: Value = resp
-                .json()
-                .await
-                .map_err(|e| SearchError::Parse(e.to_string()))?;
+            let body =
+                send_json(self.post("/v1/search", json!({ "query": query, "limit": count })))
+                    .await?;
             let results = body["data"]
                 .as_array()
                 .map(|arr| {
                     arr.iter()
                         .take(count as usize)
-                        .map(|r| SearchResult {
-                            title: r["title"].as_str().unwrap_or("").to_string(),
-                            url: r["url"].as_str().unwrap_or("").to_string(),
-                            snippet: r["description"].as_str().unwrap_or("").to_string(),
-                        })
+                        .map(|r| result_from(r, "description"))
                         .collect()
                 })
                 .unwrap_or_default();

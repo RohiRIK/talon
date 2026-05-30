@@ -41,6 +41,34 @@ pub trait SearchBackend: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SearchResult>, SearchError>> + Send + 'a>>;
 }
 
+/// Send a request, check the status, and parse the JSON body — the shape every
+/// JSON backend (Brave, SearXNG, Firecrawl) repeats.
+pub(crate) async fn send_json(rb: reqwest::RequestBuilder) -> Result<Value, SearchError> {
+    let resp = rb
+        .send()
+        .await
+        .map_err(|e| SearchError::Transport(e.to_string()))?;
+    if !resp.status().is_success() {
+        return Err(SearchError::Transport(format!(
+            "HTTP {}",
+            resp.status().as_u16()
+        )));
+    }
+    resp.json()
+        .await
+        .map_err(|e| SearchError::Parse(e.to_string()))
+}
+
+/// Build a [`SearchResult`] from a JSON object with `title`/`url` and a
+/// backend-specific snippet field.
+pub(crate) fn result_from(r: &Value, snippet_key: &str) -> SearchResult {
+    SearchResult {
+        title: r["title"].as_str().unwrap_or("").to_string(),
+        url: r["url"].as_str().unwrap_or("").to_string(),
+        snippet: r[snippet_key].as_str().unwrap_or("").to_string(),
+    }
+}
+
 // ── Brave ─────────────────────────────────────────────────────────────────────
 
 /// Brave Search API. `Unavailable` when no key is configured.
@@ -85,35 +113,20 @@ impl SearchBackend for BraveBackend {
                 .api_key
                 .as_ref()
                 .ok_or_else(|| SearchError::Unavailable("no BRAVE_API_KEY".to_string()))?;
-            let resp = self
-                .client
-                .get(format!("{}/res/v1/web/search", self.base))
-                .header("X-Subscription-Token", key)
-                .header("Accept", "application/json")
-                .query(&[("q", query), ("count", &count.to_string())])
-                .send()
-                .await
-                .map_err(|e| SearchError::Transport(e.to_string()))?;
-            if !resp.status().is_success() {
-                return Err(SearchError::Transport(format!(
-                    "HTTP {}",
-                    resp.status().as_u16()
-                )));
-            }
-            let body: Value = resp
-                .json()
-                .await
-                .map_err(|e| SearchError::Parse(e.to_string()))?;
+            let body = send_json(
+                self.client
+                    .get(format!("{}/res/v1/web/search", self.base))
+                    .header("X-Subscription-Token", key)
+                    .header("Accept", "application/json")
+                    .query(&[("q", query), ("count", &count.to_string())]),
+            )
+            .await?;
             let results = body["web"]["results"]
                 .as_array()
                 .map(|arr| {
                     arr.iter()
                         .take(count as usize)
-                        .map(|r| SearchResult {
-                            title: r["title"].as_str().unwrap_or("").to_string(),
-                            url: r["url"].as_str().unwrap_or("").to_string(),
-                            snippet: r["description"].as_str().unwrap_or("").to_string(),
-                        })
+                        .map(|r| result_from(r, "description"))
                         .collect()
                 })
                 .unwrap_or_default();

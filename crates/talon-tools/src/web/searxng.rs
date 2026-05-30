@@ -7,9 +7,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use serde_json::Value;
-
-use crate::web::backend::{SearchBackend, SearchError, SearchResult};
+use crate::web::backend::{SearchBackend, SearchError, SearchResult, result_from, send_json};
 
 pub struct SearxngBackend {
     client: reqwest::Client,
@@ -37,33 +35,18 @@ impl SearchBackend for SearxngBackend {
         count: u32,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SearchResult>, SearchError>> + Send + 'a>> {
         Box::pin(async move {
-            let resp = self
-                .client
-                .get(format!("{}/search", self.base))
-                .query(&[("q", query), ("format", "json"), ("pageno", "1")])
-                .send()
-                .await
-                .map_err(|e| SearchError::Transport(e.to_string()))?;
-            if !resp.status().is_success() {
-                return Err(SearchError::Transport(format!(
-                    "HTTP {}",
-                    resp.status().as_u16()
-                )));
-            }
-            let body: Value = resp
-                .json()
-                .await
-                .map_err(|e| SearchError::Parse(e.to_string()))?;
+            let body = send_json(self.client.get(format!("{}/search", self.base)).query(&[
+                ("q", query),
+                ("format", "json"),
+                ("pageno", "1"),
+            ]))
+            .await?;
             let results = body["results"]
                 .as_array()
                 .map(|arr| {
                     arr.iter()
                         .take(count as usize)
-                        .map(|r| SearchResult {
-                            title: r["title"].as_str().unwrap_or("").to_string(),
-                            url: r["url"].as_str().unwrap_or("").to_string(),
-                            snippet: r["content"].as_str().unwrap_or("").to_string(),
-                        })
+                        .map(|r| result_from(r, "content"))
                         .collect()
                 })
                 .unwrap_or_default();
