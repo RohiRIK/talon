@@ -695,7 +695,7 @@ cargo dist build --release   # produces tarballs for all targets
 - [x] 2.5.9 `crates/talon-memory/src/cache.rs` — `SemanticCache`: embed LLM prompts, return cached response if similarity > 0.95. LRU in-memory with TTL. No Redis. (Iris LangCache pattern, doc #70)
 - [x] 2.5.10 `crates/talon-memory/src/decay.rs` — `DecayEngine`: time-based importance decay, run as periodic task (once per day, not per query)
 - [x] 2.5.11 Update `ContextBuilder` (Phase 2 task 2.7) to use `WorkingMemory::compact()` for auto-summarization instead of static window trimming
-- [ ] 2.5.12 Integration tests: fact extraction round-trip, dedup merges similar facts, hybrid search returns ranked results, semantic cache hit/miss, decay reduces importance over time
+- [x] 2.5.12 Integration tests: fact extraction round-trip, dedup merges similar facts, hybrid search returns ranked results, semantic cache hit/miss, decay reduces importance over time
 - [ ] 2.5.13 `talon cache clear` + `talon cache stats` + `talon memory stats` CLI subcommands
 
 ### Exit Gate

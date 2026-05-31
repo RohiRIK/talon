@@ -7,10 +7,16 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use talon_memory::{ContextBuilder, Database, MemoryStore, SqliteStore};
+use talon_memory::{
+    ContextBuilder, Database, DecayEngine, DedupOutcome, Deduplicator, FactCompleter,
+    FactExtractor, HybridSearch, LtmStore, Memory, MemoryCategory, MemoryError, MemoryStore,
+    SemanticCache, SqliteStore,
+};
 
 async fn make_db() -> Arc<Database> {
     let db = Arc::new(Database::open(":memory:").expect("open"));
@@ -215,4 +221,222 @@ async fn vacuum_after_deletes_does_not_error() {
     db.vacuum().await.expect("vacuum after delete");
     let s = db.stats().await.expect("stats");
     assert_eq!(s.message_count, 0);
+}
+
+// ── Phase 2.5 LTM end-to-end (task 2.5.12) ────────────────────────────────────
+
+async fn make_ltm() -> LtmStore {
+    LtmStore::new(make_ltm_db().await)
+}
+
+async fn make_ltm_db() -> Database {
+    let db = Database::open(":memory:").expect("open");
+    db.init_schema().await.expect("schema");
+    db
+}
+
+/// 384-dim embedding with two distinguishing leading components.
+fn emb(a: f32, b: f32) -> Vec<f32> {
+    let mut v = vec![0.0f32; 384];
+    v[0] = a;
+    v[1] = b;
+    v
+}
+
+/// LLM stub that returns a fixed completion (used to drive fact extraction).
+struct StubCompleter(&'static str);
+impl FactCompleter for StubCompleter {
+    fn complete<'a>(
+        &'a self,
+        _prompt: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, MemoryError>> + Send + 'a>> {
+        let out = self.0.to_string();
+        Box::pin(async move { Ok(out) })
+    }
+}
+
+#[tokio::test]
+async fn fact_extraction_round_trips_into_ltm() {
+    let store = make_ltm().await;
+    let llm = StubCompleter(
+        r#"Sure: [{"content":"user prefers dark mode","category":"user_preference","importance":4,"tags":["ui"],"entities":["dark mode"]}]"#,
+    );
+
+    let facts = FactExtractor::new()
+        .extract("user: I always use dark mode", &llm)
+        .await
+        .expect("extract");
+    assert_eq!(facts.len(), 1);
+
+    let id = store.insert(&facts[0], None).await.expect("insert");
+    let got = store.get(id).await.expect("get").expect("present");
+    assert_eq!(got.content, "user prefers dark mode");
+    assert_eq!(got.category, MemoryCategory::UserPreference);
+    assert_eq!(got.importance, 4);
+
+    // The extracted fact is keyword-recoverable in a later session.
+    let hits = store.search_text("dark mode", 5).await.expect("search");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].id, id);
+}
+
+#[tokio::test]
+async fn dedup_merges_near_duplicate_facts() {
+    let store = make_ltm().await;
+    let dedup = Deduplicator::new();
+
+    let first = Memory::new(
+        "user prefers dark mode",
+        MemoryCategory::Fact,
+        3,
+        vec![],
+        vec![],
+    );
+    let out = dedup
+        .upsert(&store, &first, &emb(1.0, 0.0))
+        .await
+        .expect("upsert first");
+    let id = match out {
+        DedupOutcome::Inserted(id) => id,
+        DedupOutcome::Merged { .. } => panic!("first insert must not merge"),
+    };
+
+    // A semantically identical fact with a near-identical vector must merge.
+    let dup = Memory::new(
+        "the user likes dark mode",
+        MemoryCategory::Fact,
+        5,
+        vec![],
+        vec![],
+    );
+    let out = dedup
+        .upsert(&store, &dup, &emb(1.0, 0.0))
+        .await
+        .expect("upsert dup");
+    match out {
+        DedupOutcome::Merged {
+            id: merged,
+            similarity,
+        } => {
+            assert_eq!(merged, id, "must reinforce the existing memory");
+            assert!(
+                similarity >= 0.85,
+                "similarity {similarity} below threshold"
+            );
+        }
+        DedupOutcome::Inserted(_) => panic!("near-duplicate must merge, not insert"),
+    }
+
+    // Reinforcement raised importance to the higher of the two (5).
+    assert_eq!(
+        store
+            .get(id)
+            .await
+            .expect("get")
+            .expect("present")
+            .importance,
+        5
+    );
+}
+
+#[tokio::test]
+async fn hybrid_search_ranks_both_arm_match_first() {
+    let store = make_ltm().await;
+    let target = store
+        .insert(
+            &Memory::new(
+                "user prefers dark mode",
+                MemoryCategory::Fact,
+                4,
+                vec![],
+                vec![],
+            ),
+            Some(&emb(1.0, 0.0)),
+        )
+        .await
+        .expect("insert target");
+    // Keyword-only match, far in vector space.
+    store
+        .insert(
+            &Memory::new(
+                "dark chocolate recipe",
+                MemoryCategory::Fact,
+                3,
+                vec![],
+                vec![],
+            ),
+            Some(&emb(0.0, 1.0)),
+        )
+        .await
+        .expect("insert distractor");
+
+    let hits = HybridSearch::new()
+        .search(&store, "dark mode", &emb(1.0, 0.0), 5)
+        .await
+        .expect("search");
+    assert_eq!(hits[0].id, target, "match strong in both arms ranks first");
+}
+
+#[tokio::test]
+async fn semantic_cache_hits_and_misses() {
+    let mut cache = SemanticCache::new(8, Duration::from_secs(60));
+    cache.put(&emb(1.0, 0.0), "cached answer");
+
+    // Identical embedding → hit.
+    assert_eq!(cache.get(&emb(1.0, 0.0)).as_deref(), Some("cached answer"));
+    // Orthogonal embedding → miss (cosine 0 < 0.95).
+    assert!(cache.get(&emb(0.0, 1.0)).is_none());
+
+    let stats = cache.stats();
+    assert_eq!(stats.hits, 1);
+    assert_eq!(stats.misses, 1);
+    assert_eq!(stats.entries, 1);
+}
+
+#[tokio::test]
+async fn decay_reduces_score_over_time() {
+    let store = make_ltm().await;
+    let id = store
+        .insert(
+            &Memory::new("aging fact", MemoryCategory::Fact, 3, vec![], vec![]),
+            None,
+        )
+        .await
+        .expect("insert");
+
+    let accessed = store
+        .get(id)
+        .await
+        .expect("get")
+        .expect("present")
+        .accessed_at;
+    let fresh = store
+        .get(id)
+        .await
+        .expect("get")
+        .expect("present")
+        .decay_score;
+    assert!(
+        (fresh - 1.0).abs() < 1e-6,
+        "new memory starts at full score"
+    );
+
+    // One half-life (30 days) after last access → score halves.
+    let one_half_life = accessed + 30 * 86_400;
+    let updated = DecayEngine::new()
+        .run(&store, one_half_life)
+        .await
+        .expect("run");
+    assert_eq!(updated, 1);
+
+    let decayed = store
+        .get(id)
+        .await
+        .expect("get")
+        .expect("present")
+        .decay_score;
+    assert!(
+        decayed < fresh && (decayed - 0.5).abs() < 1e-3,
+        "score should erode to ~0.5, got {decayed}"
+    );
 }
