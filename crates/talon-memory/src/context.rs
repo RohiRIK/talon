@@ -1,10 +1,12 @@
-use crate::{MemoryError, StoredMessage, store::MemoryStore};
+use crate::{MemoryError, StoredMessage, Summarizer, WorkingMemory, store::MemoryStore};
 
 /// Assembles the context window for one agent turn.
 ///
 /// Order: system prompt → USER.md → MEMORY.md → FTS5 retrievals → recent N messages.
 /// Token budget: hard cap at `max_tokens` (caller sets this to 70% of the model's
-/// context window). Items are dropped oldest-first when the budget is exceeded.
+/// context window). When the recent-message window overflows the budget, the
+/// oldest turns are folded into a rolling summary via an injected [`Summarizer`]
+/// ([`Self::summarizer`]); without one, they are dropped oldest-first.
 pub struct ContextBuilder<'a> {
     store: &'a dyn MemoryStore,
     session_id: &'a str,
@@ -15,15 +17,18 @@ pub struct ContextBuilder<'a> {
     fts_limit: usize,
     recent_n: usize,
     max_tokens: usize,
+    summarizer: Option<&'a dyn Summarizer>,
 }
 
 /// Assembled context ready for the LLM.
 #[derive(Debug, Clone)]
 pub struct BuiltContext {
-    /// Full system prompt text (system + USER.md + MEMORY.md).
+    /// Full system prompt text (system + USER.md + MEMORY.md + conversation summary).
     pub system: String,
     /// Messages to include in the conversation window, oldest-first.
     pub messages: Vec<StoredMessage>,
+    /// Rolling summary of older turns folded out of the window, if any.
+    pub summary: Option<String>,
     /// Number of tokens estimated to be in use.
     pub estimated_tokens: usize,
 }
@@ -40,7 +45,16 @@ impl<'a> ContextBuilder<'a> {
             fts_limit: 5,
             recent_n: 20,
             max_tokens: 70_000,
+            summarizer: None,
         }
+    }
+
+    /// Summarize overflow turns instead of dropping them. When the recent window
+    /// exceeds the token budget, the oldest turns are folded into a rolling
+    /// summary (surfaced in [`BuiltContext::summary`] and appended to `system`).
+    pub fn summarizer(mut self, s: &'a dyn Summarizer) -> Self {
+        self.summarizer = Some(s);
+        self
     }
 
     pub fn system_prompt(mut self, s: impl Into<String>) -> Self {
@@ -81,6 +95,7 @@ impl<'a> ContextBuilder<'a> {
 
     /// Build the context, respecting the token budget.
     pub async fn build(self) -> Result<BuiltContext, MemoryError> {
+        let summarizer = self.summarizer;
         // 1. System block.
         let mut system_parts: Vec<String> = Vec::new();
         if let Some(sp) = self.system_prompt {
@@ -127,21 +142,19 @@ impl<'a> ContextBuilder<'a> {
             messages.push(hit);
         }
 
-        // Append recent messages (oldest-first, drop oldest if over budget).
-        let mut recent_filtered: Vec<StoredMessage> = Vec::new();
-        for msg in recent.into_iter().rev() {
-            let tok = estimate_tokens(&msg.content);
-            if tok > budget {
-                break;
-            }
-            budget -= tok;
-            recent_filtered.push(msg);
-        }
-        // Restore oldest-first order.
-        recent_filtered.reverse();
-        messages.extend(recent_filtered);
+        // 5. Fit the recent window into the remaining budget. With a summarizer,
+        // overflow turns are folded into a rolling summary; without one, the
+        // oldest are dropped.
+        let (recent_kept, summary) = Self::fit_recent(summarizer, recent, budget).await?;
+        messages.extend(recent_kept);
 
-        let estimated_tokens = system_tokens
+        let mut system = system;
+        if let Some(s) = &summary {
+            system.push_str("\n\n## Conversation Summary\n");
+            system.push_str(s);
+        }
+
+        let estimated_tokens = estimate_tokens(&system)
             + messages
                 .iter()
                 .map(|m| estimate_tokens(&m.content))
@@ -150,8 +163,46 @@ impl<'a> ContextBuilder<'a> {
         Ok(BuiltContext {
             system,
             messages,
+            summary,
             estimated_tokens,
         })
+    }
+
+    /// Fit the oldest-first `recent` window into `budget`. Returns the kept
+    /// messages (oldest-first) and an optional rolling summary of folded turns.
+    async fn fit_recent(
+        summarizer: Option<&'a dyn Summarizer>,
+        recent: Vec<StoredMessage>,
+        budget: usize,
+    ) -> Result<(Vec<StoredMessage>, Option<String>), MemoryError> {
+        let Some(summarizer) = summarizer else {
+            // Drop oldest-first: walk newest→oldest while turns fit.
+            let mut budget = budget;
+            let mut kept: Vec<StoredMessage> = Vec::new();
+            for msg in recent.into_iter().rev() {
+                let tok = estimate_tokens(&msg.content);
+                if tok > budget {
+                    break;
+                }
+                budget -= tok;
+                kept.push(msg);
+            }
+            kept.reverse();
+            return Ok((kept, None));
+        };
+
+        let mut wm = WorkingMemory::new(budget.max(1));
+        for m in &recent {
+            wm.push(m.role.clone(), m.content.clone());
+        }
+        while wm.needs_compaction() {
+            if !wm.compact(summarizer).await? {
+                break;
+            }
+        }
+        let start = recent.len().saturating_sub(wm.len());
+        let kept = recent.into_iter().skip(start).collect();
+        Ok((kept, wm.summary().map(str::to_string)))
     }
 }
 
@@ -288,5 +339,73 @@ mod tests {
         assert_eq!(estimate_tokens("abcd"), 1);
         assert_eq!(estimate_tokens("abcde"), 2); // ceil(5/4) = 2
         assert_eq!(estimate_tokens(""), 0);
+    }
+
+    use std::{future::Future, pin::Pin};
+
+    /// Deterministic summarizer: emits a fixed marker so tests can detect folding.
+    struct StubSummarizer;
+    impl Summarizer for StubSummarizer {
+        fn summarize<'a>(
+            &'a self,
+            _transcript: &'a str,
+        ) -> Pin<Box<dyn Future<Output = Result<String, MemoryError>> + Send + 'a>> {
+            Box::pin(async { Ok("folded older turns".to_string()) })
+        }
+    }
+
+    #[tokio::test]
+    async fn summarizer_folds_overflow_instead_of_dropping() {
+        let store = make_store().await;
+        for i in 0..40 {
+            store
+                .save_message("sum", "user", &format!("message {i} {}", "x".repeat(40)))
+                .await
+                .expect("save");
+        }
+
+        let ctx = ContextBuilder::new(store.as_ref(), "sum")
+            .max_tokens(120)
+            .recent_n(40)
+            .summarizer(&StubSummarizer)
+            .build()
+            .await
+            .expect("build");
+
+        assert_eq!(ctx.summary.as_deref(), Some("folded older turns"));
+        assert!(
+            ctx.system.contains("## Conversation Summary"),
+            "summary should be appended to the system block"
+        );
+        assert!(
+            ctx.system.contains("folded older turns"),
+            "summary text should appear in system"
+        );
+        // The newest message must survive verbatim.
+        assert!(
+            ctx.messages
+                .iter()
+                .any(|m| m.content.contains("message 39")),
+            "newest turn must be kept"
+        );
+    }
+
+    #[tokio::test]
+    async fn summarizer_noop_under_budget_leaves_no_summary() {
+        let store = make_store().await;
+        store
+            .save_message("small", "user", "hello")
+            .await
+            .expect("save");
+
+        let ctx = ContextBuilder::new(store.as_ref(), "small")
+            .summarizer(&StubSummarizer)
+            .build()
+            .await
+            .expect("build");
+
+        assert!(ctx.summary.is_none(), "nothing to fold under budget");
+        assert!(!ctx.system.contains("Conversation Summary"));
+        assert_eq!(ctx.messages.len(), 1);
     }
 }
