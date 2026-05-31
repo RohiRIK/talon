@@ -688,7 +688,7 @@ cargo dist build --release   # produces tarballs for all targets
 - [x] 2.5.2 `crates/talon-memory/src/ltm/store.rs` — `MemoryStore` over SQLite: `memories` table `(id, content, category, importance, created_at, accessed_at, decay_score, entities)`, `memories_fts` (FTS5 on content), and `vec_memories` (sqlite-vec `vec0`, `embedding float[384]`). All in `talon.db`; write fact + FTS row + vector in one transaction.
 - [x] 2.5.3 `crates/talon-memory/src/ltm/mod.rs` — **Talon LTM** memory model: `Memory { id, content, category, importance: u8 (1–5), decay_score: f32, tags, entities }`. Categories: `user_preference`, `decision`, `fact`, `pattern`, `gotcha`.
 - [x] 2.5.4 `crates/talon-memory/src/working.rs` — `WorkingMemory` struct: token-budgeted message window, auto-summarizes via LLM call when budget exceeded (claude-ltm two-tier pattern, doc #67)
-- [ ] 2.5.5 `crates/talon-memory/src/facts.rs` — `FactExtractor`: LLM-powered extraction per session end; produces `Vec<Memory>` with category, importance score, entities
+- [x] 2.5.5 `crates/talon-memory/src/facts.rs` — `FactExtractor`: LLM-powered extraction per session end; produces `Vec<Memory>` with category, importance score, entities
 - [ ] 2.5.6 `crates/talon-memory/src/dedup.rs` — Semantic deduplication: embed new memories, sqlite-vec KNN cosine vs existing (threshold 0.85), merge duplicates instead of appending
 - [ ] 2.5.7 `crates/talon-memory/src/promotion.rs` — Memory promotion: post-session hook moves high-importance working-memory facts → the `memories` table (same DB)
 - [ ] 2.5.8 `crates/talon-memory/src/hybrid_search.rs` — Hybrid retrieval: FTS5 BM25 ⊕ sqlite-vec KNN, fused with Reciprocal Rank Fusion (RRF) in Rust

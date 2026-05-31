@@ -1,5 +1,6 @@
 pub mod context;
 pub mod error;
+pub mod facts;
 pub mod files;
 pub mod ltm;
 pub mod migrations;
@@ -9,6 +10,7 @@ pub mod working;
 
 pub use context::{BuiltContext, ContextBuilder};
 pub use error::MemoryError;
+pub use facts::{FactCompleter, FactExtractor};
 pub use files::{MemoryMd, UserMd};
 pub use ltm::{LtmStore, Memory, MemoryCategory};
 pub use sqlite_store::SqliteStore;
