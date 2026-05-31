@@ -358,6 +358,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn recall_memories_without_db_is_empty() {
+        let (tx, _rx) = make_channel();
+        let provider = Arc::new(MockProvider::text("x", "end_turn"));
+        let agent = Agent::new(provider, make_dispatcher(), tx);
+        assert!(agent.recall_memories("anything at all").await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn extract_and_promote_without_db_is_noop() {
+        // No DB configured → extraction must not touch the provider or panic.
+        let (tx, _rx) = make_channel();
+        let provider = Arc::new(MockProvider::new(vec![]));
+        let agent = Agent::new(provider, make_dispatcher(), tx);
+        // Returns cleanly despite the empty (would-be-exhausted) provider queue.
+        agent.extract_and_promote("User: hi\n").await;
+    }
+
+    #[tokio::test]
     async fn agent_extracts_and_recalls_fact_across_sessions() {
         // Session 1: a normal turn (text, no tools) followed by the extraction
         // call that returns one durable fact as JSON.
