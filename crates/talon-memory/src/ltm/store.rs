@@ -161,6 +161,41 @@ impl LtmStore {
         Ok(n)
     }
 
+    /// Recompute every memory's `decay_score` from how long ago it was accessed,
+    /// in a single transaction. The score is [`crate::decay::decay_factor`] of
+    /// `now_unix - accessed_at` under `half_life_days`. Returns the row count.
+    pub async fn apply_decay(
+        &self,
+        half_life_days: f64,
+        now_unix: i64,
+    ) -> Result<usize, MemoryError> {
+        let n = self
+            .db
+            .pool()
+            .get()
+            .await?
+            .interact(move |conn| -> rusqlite::Result<usize> {
+                let tx = conn.transaction()?;
+                let rows: Vec<(i64, i64)> = {
+                    let mut stmt = tx.prepare("SELECT id, accessed_at FROM memories")?;
+                    stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?
+                        .collect::<rusqlite::Result<Vec<_>>>()?
+                };
+                let mut updated = 0usize;
+                for (id, accessed_at) in &rows {
+                    let score = crate::decay::decay_factor(now_unix - accessed_at, half_life_days);
+                    updated += tx.execute(
+                        "UPDATE memories SET decay_score = ?1 WHERE id = ?2",
+                        params![f64::from(score), id],
+                    )?;
+                }
+                tx.commit()?;
+                Ok(updated)
+            })
+            .await??;
+        Ok(n)
+    }
+
     /// sqlite-vec brute-force KNN. Returns `(memory_id, distance)` nearest first.
     pub async fn search_vector(
         &self,
