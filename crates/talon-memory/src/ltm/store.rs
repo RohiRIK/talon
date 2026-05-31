@@ -112,6 +112,55 @@ impl LtmStore {
         Ok(rows)
     }
 
+    /// Read back a stored embedding by memory id. Returns `None` when the memory
+    /// has no vector row. Used by the [`crate::Deduplicator`] to compute an exact
+    /// cosine similarity against a candidate (KNN only yields L2 distance).
+    pub async fn get_embedding(&self, id: i64) -> Result<Option<Vec<f32>>, MemoryError> {
+        let emb = self
+            .db
+            .pool()
+            .get()
+            .await?
+            .interact(move |conn| -> rusqlite::Result<Option<Vec<f32>>> {
+                conn.query_row(
+                    "SELECT embedding FROM vec_memories WHERE rowid = ?1",
+                    [id],
+                    |row| {
+                        let bytes: Vec<u8> = row.get(0)?;
+                        Ok(bytes
+                            .chunks_exact(4)
+                            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                            .collect())
+                    },
+                )
+                .optional()
+            })
+            .await??;
+        Ok(emb)
+    }
+
+    /// Reinforce an existing memory on a dedup merge: raise its importance to
+    /// `importance` if that is higher, and refresh `accessed_at`. Returns the
+    /// number of rows updated (0 if `id` does not exist).
+    pub async fn reinforce(&self, id: i64, importance: u8) -> Result<usize, MemoryError> {
+        let importance = i64::from(importance);
+        let n = self
+            .db
+            .pool()
+            .get()
+            .await?
+            .interact(move |conn| -> rusqlite::Result<usize> {
+                conn.execute(
+                    "UPDATE memories
+                     SET importance = MAX(importance, ?1), accessed_at = unixepoch()
+                     WHERE id = ?2",
+                    params![importance, id],
+                )
+            })
+            .await??;
+        Ok(n)
+    }
+
     /// sqlite-vec brute-force KNN. Returns `(memory_id, distance)` nearest first.
     pub async fn search_vector(
         &self,
@@ -315,6 +364,70 @@ mod tests {
             s.search_vector(&emb(0.5, 0.5), 1).await.expect("knn")[0].0,
             id
         );
+    }
+
+    #[tokio::test]
+    async fn get_embedding_roundtrips_stored_vector() {
+        let s = store().await;
+        let id = s
+            .insert(
+                &Memory::new("vec", MemoryCategory::Fact, 3, vec![], vec![]),
+                Some(&emb(0.25, 0.75)),
+            )
+            .await
+            .expect("insert");
+        let got = s
+            .get_embedding(id)
+            .await
+            .expect("get_embedding")
+            .expect("present");
+        assert_eq!(got.len(), 384);
+        assert!((got[0] - 0.25).abs() < f32::EPSILON);
+        assert!((got[1] - 0.75).abs() < f32::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn get_embedding_absent_returns_none() {
+        let s = store().await;
+        let id = s
+            .insert(
+                &Memory::new("no vec", MemoryCategory::Fact, 3, vec![], vec![]),
+                None,
+            )
+            .await
+            .expect("insert");
+        assert!(s.get_embedding(id).await.expect("get_embedding").is_none());
+    }
+
+    #[tokio::test]
+    async fn reinforce_raises_importance_to_max_only() {
+        let s = store().await;
+        let id = s
+            .insert(
+                &Memory::new("reinforce", MemoryCategory::Fact, 3, vec![], vec![]),
+                None,
+            )
+            .await
+            .expect("insert");
+
+        assert_eq!(s.reinforce(id, 5).await.expect("reinforce"), 1);
+        assert_eq!(
+            s.get(id).await.expect("get").expect("present").importance,
+            5
+        );
+
+        // A lower importance must not lower the existing value.
+        assert_eq!(s.reinforce(id, 2).await.expect("reinforce"), 1);
+        assert_eq!(
+            s.get(id).await.expect("get").expect("present").importance,
+            5
+        );
+    }
+
+    #[tokio::test]
+    async fn reinforce_missing_id_updates_nothing() {
+        let s = store().await;
+        assert_eq!(s.reinforce(999, 4).await.expect("reinforce"), 0);
     }
 
     #[tokio::test]

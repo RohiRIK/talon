@@ -1,4 +1,5 @@
 pub mod context;
+pub mod dedup;
 pub mod error;
 pub mod facts;
 pub mod files;
@@ -9,6 +10,7 @@ pub mod store;
 pub mod working;
 
 pub use context::{BuiltContext, ContextBuilder};
+pub use dedup::{DedupOutcome, Deduplicator, cosine_similarity};
 pub use error::MemoryError;
 pub use facts::{FactCompleter, FactExtractor};
 pub use files::{MemoryMd, UserMd};
