@@ -219,7 +219,7 @@ docker build -t talon:phase-N .
 | 1 | Core Agent Loop | ✅ Complete (2026-05-27) | Real LLM response, messages persisted to SQLite |
 | 1.5 | Additional LLM Providers | ✅ Complete (2026-05-28) | Codex, ClaudeCode, Antigravity + live smoke test, 219 tests green |
 | 2 | Memory (FTS5) | ✅ Complete (2026-05-27) | FTS5 search <50ms, context within token budget |
-| 2.5 | Talon LTM + sqlite-vec | ⬜ Not started | Auto fact recall across sessions (one SQLite DB) |
+| 2.5 | Talon LTM + sqlite-vec | ✅ Complete (2026-05-31) | Auto fact recall across sessions wired into agent loop (FTS5 recall + LLM fact extraction → promotion); live LLM smoke pending |
 | 3 | Tools Tier 1 | ✅ Complete (2026-05-28) | 275 tests green; fs tools + Docker/native sandbox + TimeoutWrapper |
 | 4 | Gateway | ✅ Complete (2026-05-28) | CLI + Telegram + HTTP all functional; 349 tests green |
 | 5 | Tools Tier 2 + MCP | ✅ Complete (2026-05-29) | Tools built + registered; live smoke (real search/MCP) pending |

@@ -22,6 +22,9 @@ pub enum MemoryError {
 
     #[error("not found: {0}")]
     NotFound(String),
+
+    #[error("llm error: {0}")]
+    Llm(String),
 }
 
 #[cfg(test)]
@@ -66,5 +69,12 @@ mod tests {
     fn not_found_variant_message_prefix() {
         let e = MemoryError::NotFound("key".to_string());
         assert!(e.to_string().starts_with("not found"));
+    }
+
+    #[test]
+    fn llm_variant_message_prefix() {
+        let e = MemoryError::Llm("timeout".to_string());
+        assert!(e.to_string().starts_with("llm error"));
+        assert!(e.to_string().contains("timeout"));
     }
 }

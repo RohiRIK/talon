@@ -56,13 +56,27 @@ impl Agent {
         self.emit(AgentEvent::Started).await;
         self.persist(session_id, "user", &user_message).await;
 
+        // LTM recall: surface durable memories relevant to this turn and fold them
+        // into the system block so they cross session boundaries.
+        let recalled = self.recall_memories(&user_message).await;
+
         // Every conversation opens with Talon's baseline system message (identity +
         // memory location). Anthropic hoists it to the top-level `system` field;
         // OpenAI-compatible providers accept the system role inline.
-        let mut messages = vec![
-            Message::system(crate::system_prompt::baseline_system_prompt()),
-            Message::user(user_message),
-        ];
+        let mut system_text = crate::system_prompt::baseline_system_prompt();
+        if !recalled.is_empty() {
+            system_text.push_str("\n\n## Remembered\n");
+            for memory in &recalled {
+                system_text.push_str("- ");
+                system_text.push_str(memory);
+                system_text.push('\n');
+            }
+        }
+
+        // Accumulate a plain-text transcript for end-of-turn fact extraction.
+        let mut transcript = format!("User: {user_message}\n");
+
+        let mut messages = vec![Message::system(system_text), Message::user(user_message)];
 
         // Initial: Idle → Thinking before the first LLM call.
         state = state.transition(AgentState::Thinking)?;
@@ -85,6 +99,9 @@ impl Agent {
             // Emit text content so gateways can display the assistant response.
             for block in &response.content {
                 if let ContentBlock::Text { text } = block {
+                    transcript.push_str("Assistant: ");
+                    transcript.push_str(text);
+                    transcript.push('\n');
                     self.emit(AgentEvent::Text {
                         content: text.clone(),
                     })
@@ -115,6 +132,9 @@ impl Agent {
             // tool_calls are present — stop_reason is unreliable across providers.
             // max_iterations is the backstop against infinite loops.
             if tool_calls.is_empty() {
+                // Session turn complete: extract durable facts and promote them
+                // to long-term memory before signalling completion.
+                self.extract_and_promote(&transcript).await;
                 self.emit(AgentEvent::Completed).await;
                 return Ok(());
             }
@@ -197,6 +217,77 @@ impl Agent {
                 .unwrap_or_else(|e| tracing::warn!("failed to persist message: {e}"));
         }
     }
+
+    /// FTS5/BM25 recall of durable memories relevant to the current turn.
+    /// Returns memory contents (best-ranked first); empty when there's no DB,
+    /// no usable query tokens, or no hits. Recall is best-effort — failures are
+    /// logged, never fatal to the turn.
+    async fn recall_memories(&self, query: &str) -> Vec<String> {
+        const RECALL_LIMIT: usize = 5;
+        let Some(db) = &self.db else {
+            return Vec::new();
+        };
+        let Some(fts) = fts5_or_query(query) else {
+            return Vec::new();
+        };
+        let store = talon_memory::LtmStore::new(db.as_ref().clone());
+        match store.search_text(&fts, RECALL_LIMIT).await {
+            Ok(hits) => hits.into_iter().map(|m| m.content).collect(),
+            Err(e) => {
+                tracing::warn!("ltm recall failed: {e}");
+                Vec::new()
+            }
+        }
+    }
+
+    /// End-of-turn fact extraction: run the transcript through the LLM-backed
+    /// `FactExtractor`, then promote durable facts into the `memories` table.
+    /// Best-effort — extraction/promotion failures are logged, not propagated.
+    async fn extract_and_promote(&self, transcript: &str) {
+        const MIN_IMPORTANCE: u8 = 2;
+        let Some(db) = &self.db else {
+            return;
+        };
+        let store = talon_memory::LtmStore::new(db.as_ref().clone());
+        let completer = crate::memory_bridge::LlmFactCompleter::new(Arc::clone(&self.provider));
+        let facts = match talon_memory::FactExtractor::new()
+            .extract(transcript, &completer)
+            .await
+        {
+            Ok(facts) => facts,
+            Err(e) => {
+                tracing::warn!("ltm fact extraction failed: {e}");
+                return;
+            }
+        };
+        if facts.is_empty() {
+            return;
+        }
+        let promoter = talon_memory::Promoter::with_min_importance(MIN_IMPORTANCE);
+        if let Err(e) = promoter
+            .promote(facts, &store, &crate::memory_bridge::ZeroEmbedder)
+            .await
+        {
+            tracing::warn!("ltm promotion failed: {e}");
+        }
+    }
+}
+
+/// Turn arbitrary user text into a safe FTS5 OR-of-phrases query. Each
+/// alphanumeric token is double-quoted so FTS5 operators or punctuation in user
+/// input can't break the `MATCH` expression. Returns `None` when no usable
+/// tokens remain.
+fn fts5_or_query(text: &str) -> Option<String> {
+    let terms: Vec<String> = text
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .map(|t| format!("\"{}\"", t.to_lowercase()))
+        .collect();
+    if terms.is_empty() {
+        None
+    } else {
+        Some(terms.join(" OR "))
+    }
 }
 
 #[cfg(test)]
@@ -251,6 +342,83 @@ mod tests {
     }
 
     // ── Tests ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn fts5_or_query_quotes_tokens_and_drops_punctuation() {
+        assert_eq!(
+            fts5_or_query("dark mode?"),
+            Some("\"dark\" OR \"mode\"".to_string())
+        );
+        // Bare FTS5 operators in user input become quoted phrases, not operators.
+        assert_eq!(
+            fts5_or_query("a OR b"),
+            Some("\"a\" OR \"or\" OR \"b\"".to_string())
+        );
+        assert_eq!(fts5_or_query("   ?! "), None);
+    }
+
+    #[tokio::test]
+    async fn agent_extracts_and_recalls_fact_across_sessions() {
+        // Session 1: a normal turn (text, no tools) followed by the extraction
+        // call that returns one durable fact as JSON.
+        let provider = Arc::new(MockProvider::new(vec![
+            LlmResponse {
+                content: vec![ContentBlock::Text {
+                    text: "Noted.".to_string(),
+                }],
+                stop_reason: "end_turn".to_string(),
+            },
+            LlmResponse {
+                content: vec![ContentBlock::Text {
+                    text: "[{\"content\":\"User prefers dark mode\",\
+                           \"category\":\"user_preference\",\"importance\":4}]"
+                        .to_string(),
+                }],
+                stop_reason: "end_turn".to_string(),
+            },
+        ]));
+        let db = Arc::new(talon_memory::Database::open(":memory:").expect("db"));
+        db.init_schema().await.expect("schema");
+
+        let (tx, _rx) = make_channel();
+        let mut agent = Agent::new(provider, make_dispatcher(), tx).with_db(Arc::clone(&db));
+        agent
+            .run("s1", "remember that I prefer dark mode".to_string())
+            .await
+            .expect("session 1 run");
+
+        // The fact was extracted and promoted into the memories table.
+        let count: i64 = db
+            .pool()
+            .get()
+            .await
+            .expect("pool")
+            .interact(|conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM memories WHERE content LIKE '%dark mode%'",
+                    [],
+                    |row| row.get(0),
+                )
+            })
+            .await
+            .expect("interact")
+            .expect("query");
+        assert_eq!(count, 1, "fact should be promoted to long-term memory");
+
+        // Session 2: a fresh agent over the same DB recalls the fact via FTS5,
+        // even though the query word "preferences" only matches "prefers" through
+        // the porter stemmer.
+        let (tx2, _rx2) = make_channel();
+        let provider2 = Arc::new(MockProvider::text("ok", "end_turn"));
+        let agent2 = Agent::new(provider2, make_dispatcher(), tx2).with_db(Arc::clone(&db));
+        let recalled = agent2
+            .recall_memories("what do you know about my preferences?")
+            .await;
+        assert!(
+            recalled.iter().any(|m| m.contains("dark mode")),
+            "session 2 should recall the dark-mode preference, got: {recalled:?}"
+        );
+    }
 
     #[tokio::test]
     async fn agent_run_end_turn_emits_completed() {

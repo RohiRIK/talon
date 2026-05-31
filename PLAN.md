@@ -697,6 +697,7 @@ cargo dist build --release   # produces tarballs for all targets
 - [x] 2.5.11 Update `ContextBuilder` (Phase 2 task 2.7) to use `WorkingMemory::compact()` for auto-summarization instead of static window trimming
 - [x] 2.5.12 Integration tests: fact extraction round-trip, dedup merges similar facts, hybrid search returns ranked results, semantic cache hit/miss, decay reduces importance over time
 - [x] 2.5.13 `talon cache clear` + `talon cache stats` + `talon memory stats` CLI subcommands
+- [x] 2.5.14 **Runtime wiring** — integrate the LTM library into the agent loop so the behavioral exit gate fires. (a) At session end, run `FactExtractor` over the session's messages → `Deduplicator` → `Promoter` into the `memories` table. (b) At context build, run `HybridSearch` over `memories` (FTS5 BM25 ⊕ sqlite-vec KNN, RRF) and inject top hits into the memory block of `build_gateway_context`. (c) Without an embedder configured, degrade gracefully to FTS5-only (BM25) recall so cross-session text recall still works. This closes the gap between the built LTM components and the live "auto fact recall across sessions" exit gate.
 
 ### Exit Gate
 ```bash
