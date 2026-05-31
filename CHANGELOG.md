@@ -4,6 +4,23 @@ All notable changes to the Talon project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Phase 2.5: Talon LTM (SQLite + sqlite-vec)
+- **`talon-ltm` memory layer** — long-term memory implemented natively in Rust over a single SQLite database (ADR 0008 — supersedes the earlier LanceDB plan; `sqlite-vec` for vectors + FTS5 for keyword + RRF fusion in Rust, no LanceDB/Redis):
+  - `sqlite-vec` extension wired into the `deadpool-sqlite` pool (2.5.1)
+  - `LtmStore` over SQLite — `memories` table + `memories_fts` (FTS5, porter stemming) + `vec_memories` (2.5.2)
+  - Typed `MemoryCategory` enum + tags on the LTM model (2.5.3)
+  - Token-budgeted `WorkingMemory` with rolling summary (2.5.4)
+  - LLM-powered `FactExtractor` with a Markdown extraction prompt (2.5.5)
+  - Semantic deduplication of memories (2.5.6)
+  - `Promoter` — promotes high-importance session facts to LTM (2.5.7)
+  - `HybridSearch` — hybrid FTS5 + vector retrieval via Reciprocal Rank Fusion, k=60 (2.5.8)
+  - `SemanticCache` — semantic LLM response cache (2.5.9)
+  - `DecayEngine` — time-based memory decay (2.5.10)
+  - `ContextBuilder` folds overflow turns through `WorkingMemory` (2.5.11)
+  - End-to-end LTM integration tests (2.5.12)
+- **CLI:** `talon memory` (stats) and `talon cache` (stats/clear) subcommands (2.5.13)
+- **Agent runtime wiring (2.5.14)** — LTM is now live in the agent loop: FTS5 recall at the start of each turn (injected into the system prompt) and automatic LLM fact-extraction → promotion at turn end. Recall queries are sanitized via `fts5_or_query` to keep raw user text from breaking `MATCH`. Live cross-session recall verified end-to-end through the key-less `github-copilot` provider.
+
 ### Added
 - **Redis Iris integration docs** (`docs/09_Redis_Iris/`) — 5 new documents exploring Redis Iris as Talon's context engine:
   - `66_Redis_Iris_Overview.md` — Strategic fit analysis, three integration options (SQLite-only / Redis-only / Hybrid), recommendation for Option C (feature-flagged)
