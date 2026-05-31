@@ -5,6 +5,7 @@ pub mod ltm;
 pub mod migrations;
 pub mod sqlite_store;
 pub mod store;
+pub mod working;
 
 pub use context::{BuiltContext, ContextBuilder};
 pub use error::MemoryError;
@@ -12,6 +13,7 @@ pub use files::{MemoryMd, UserMd};
 pub use ltm::{LtmStore, Memory, MemoryCategory};
 pub use sqlite_store::SqliteStore;
 pub use store::MemoryStore;
+pub use working::{Summarizer, WorkingMemory};
 
 use std::sync::Once;
 
