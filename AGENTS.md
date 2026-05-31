@@ -5,6 +5,22 @@ Read this before making any significant change.
 
 ---
 
+## Rule 1 — Test the Agent via the GitHub CLI (`gh`)
+
+**Live and smoke tests run through the key-less `github-copilot` provider — never ask for or hardcode an API key.** Auth resolves from `GITHUB_TOKEN`, falling back to `gh auth token`. Run `gh auth login` once, then:
+
+```bash
+TALON_LLM_PROVIDER=github-copilot cargo run -- --message "remember that I prefer dark mode"
+# new session, same ~/.talon/talon.db:
+TALON_LLM_PROVIDER=github-copilot cargo run -- --message "what do you know about my preferences?"
+```
+
+- Only `anthropic` and `openai` need `TALON_LLM_API_KEY`. `github-copilot` is key-less (`needs_api_key == false` in `talon/src/main.rs`).
+- Default model: `claude-sonnet-4-5`. Provider impl: `crates/talon-llm/src/github_copilot.rs`.
+- Unit/integration tests still use the deterministic `MockProvider` (no network); `gh` is for end-to-end/live verification only.
+
+---
+
 ## What Talon Is
 
 Single Rust binary — AI agent with persistent memory, multi-channel gateways,
