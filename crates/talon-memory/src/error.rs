@@ -14,6 +14,9 @@ pub enum MemoryError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("serialization error: {0}")]
+    Serde(#[from] serde_json::Error),
+
     #[error("migration failed: {0}")]
     MigrationFailed(String),
 

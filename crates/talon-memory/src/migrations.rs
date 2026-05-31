@@ -4,7 +4,10 @@ use crate::error::MemoryError;
 
 /// All migrations in order. Each entry is `(version, sql)`.
 /// Only migrations with version > the current max in schema_migrations are applied.
-static MIGRATIONS: &[(i64, &str)] = &[(1, include_str!("schema.sql"))];
+static MIGRATIONS: &[(i64, &str)] = &[
+    (1, include_str!("schema.sql")),
+    (2, include_str!("schema_ltm.sql")),
+];
 
 /// Run all pending migrations on an open connection.
 /// Safe to call on every startup: already-applied versions are skipped.
@@ -46,6 +49,9 @@ mod tests {
     use super::*;
 
     fn in_memory() -> Connection {
+        // vec_memories (migration v2) is a vec0 virtual table — the extension must
+        // be registered before the connection opens (auto-extension applies at open).
+        crate::register_sqlite_vec();
         Connection::open(":memory:").expect("in-memory db")
     }
 
@@ -71,6 +77,9 @@ mod tests {
             "tool_calls",
             "skills",
             "user_facts",
+            "memories",
+            "memories_fts",
+            "vec_memories",
         ] {
             assert!(
                 tables.iter().any(|t| t == expected),
@@ -96,7 +105,7 @@ mod tests {
                 r.get(0)
             })
             .expect("query");
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
     }
 
     #[test]

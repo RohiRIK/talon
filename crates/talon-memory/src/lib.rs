@@ -1,6 +1,7 @@
 pub mod context;
 pub mod error;
 pub mod files;
+pub mod ltm;
 pub mod migrations;
 pub mod sqlite_store;
 pub mod store;
@@ -8,6 +9,7 @@ pub mod store;
 pub use context::{BuiltContext, ContextBuilder};
 pub use error::MemoryError;
 pub use files::{MemoryMd, UserMd};
+pub use ltm::{LtmStore, Memory};
 pub use sqlite_store::SqliteStore;
 pub use store::MemoryStore;
 
@@ -22,7 +24,7 @@ use thiserror::Error;
 /// `vec0` virtual table. Statically compiled in (no external `.so`). See ADR 0008.
 static VEC_INIT: Once = Once::new();
 
-fn register_sqlite_vec() {
+pub(crate) fn register_sqlite_vec() {
     VEC_INIT.call_once(|| {
         // Safety: `sqlite3_vec_init` is the extension entry point; registering it
         // as an auto-extension is the documented sqlite-vec + rusqlite pattern.
