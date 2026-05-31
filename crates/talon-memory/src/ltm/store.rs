@@ -8,7 +8,7 @@
 use rusqlite::{OptionalExtension, params};
 use zerocopy::IntoBytes;
 
-use crate::{Database, Memory, MemoryError};
+use crate::{Database, Memory, MemoryCategory, MemoryError};
 
 /// Long-term memory store over the shared `talon.db`.
 #[derive(Debug, Clone)]
@@ -33,8 +33,9 @@ impl LtmStore {
         embedding: Option<&[f32]>,
     ) -> Result<i64, MemoryError> {
         let content = mem.content.clone();
-        let category = mem.category.clone();
+        let category = mem.category.as_str().to_string();
         let importance = i64::from(mem.importance);
+        let tags = serde_json::to_string(&mem.tags)?;
         let entities = serde_json::to_string(&mem.entities)?;
         let embedding = embedding.map(<[f32]>::to_vec);
 
@@ -46,9 +47,9 @@ impl LtmStore {
             .interact(move |conn| -> rusqlite::Result<i64> {
                 let tx = conn.transaction()?;
                 tx.execute(
-                    "INSERT INTO memories (content, category, importance, entities)
-                     VALUES (?1, ?2, ?3, ?4)",
-                    params![content, category, importance, entities],
+                    "INSERT INTO memories (content, category, importance, tags, entities)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![content, category, importance, tags, entities],
                 )?;
                 let id = tx.last_insert_rowid();
                 if let Some(emb) = embedding {
@@ -74,7 +75,7 @@ impl LtmStore {
             .interact(move |conn| -> rusqlite::Result<Option<Memory>> {
                 conn.query_row(
                     "SELECT id, content, category, importance, created_at,
-                            accessed_at, decay_score, entities
+                            accessed_at, decay_score, entities, tags
                      FROM memories WHERE id = ?1",
                     [id],
                     memory_from_row,
@@ -97,7 +98,7 @@ impl LtmStore {
             .interact(move |conn| -> rusqlite::Result<Vec<Memory>> {
                 let mut stmt = conn.prepare(
                     "SELECT m.id, m.content, m.category, m.importance, m.created_at,
-                            m.accessed_at, m.decay_score, m.entities
+                            m.accessed_at, m.decay_score, m.entities, m.tags
                      FROM memories m
                      JOIN memories_fts f ON f.rowid = m.id
                      WHERE memories_fts MATCH ?1
@@ -141,21 +142,29 @@ impl LtmStore {
     }
 }
 
-/// Map a `memories` row (8 columns, in schema order) into a `Memory`.
+/// Map a `memories` row (9 columns, in the SELECT order used above) into a `Memory`.
 fn memory_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Memory> {
-    let entities_json: String = row.get(7)?;
-    let entities: Vec<String> = serde_json::from_str(&entities_json).map_err(|e| {
-        rusqlite::Error::FromSqlConversionFailure(7, rusqlite::types::Type::Text, Box::new(e))
-    })?;
+    let category: String = row.get(2)?;
+    let entities: Vec<String> = json_array(row, 7)?;
+    let tags: Vec<String> = json_array(row, 8)?;
     Ok(Memory {
         id: row.get(0)?,
         content: row.get(1)?,
-        category: row.get(2)?,
+        category: MemoryCategory::from_label(&category),
         importance: row.get::<_, i64>(3)? as u8,
         created_at: row.get(4)?,
         accessed_at: row.get(5)?,
         decay_score: row.get::<_, f64>(6)? as f32,
+        tags,
         entities,
+    })
+}
+
+/// Read a JSON-array text column into a `Vec<String>`.
+fn json_array(row: &rusqlite::Row<'_>, idx: usize) -> rusqlite::Result<Vec<String>> {
+    let raw: String = row.get(idx)?;
+    serde_json::from_str(&raw).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(idx, rusqlite::types::Type::Text, Box::new(e))
     })
 }
 
@@ -183,8 +192,9 @@ mod tests {
         let s = store().await;
         let mem = Memory::new(
             "user prefers dark mode",
-            "user_preference",
+            MemoryCategory::UserPreference,
             4,
+            vec!["ui".into()],
             vec!["dark mode".into()],
         );
         let id = s.insert(&mem, None).await.expect("insert");
@@ -193,8 +203,9 @@ mod tests {
         let got = s.get(id).await.expect("get").expect("present");
         assert_eq!(got.id, id);
         assert_eq!(got.content, "user prefers dark mode");
-        assert_eq!(got.category, "user_preference");
+        assert_eq!(got.category, MemoryCategory::UserPreference);
         assert_eq!(got.importance, 4);
+        assert_eq!(got.tags, vec!["ui".to_string()]);
         assert_eq!(got.entities, vec!["dark mode".to_string()]);
         // DB-assigned defaults.
         assert!(got.created_at > 0);
@@ -213,8 +224,9 @@ mod tests {
         s.insert(
             &Memory::new(
                 "the deploy script lives in scripts/release.sh",
-                "fact",
+                MemoryCategory::Fact,
                 3,
+                vec![],
                 vec![],
             ),
             None,
@@ -230,9 +242,12 @@ mod tests {
     #[tokio::test]
     async fn search_text_returns_empty_on_no_match() {
         let s = store().await;
-        s.insert(&Memory::new("nothing relevant", "fact", 1, vec![]), None)
-            .await
-            .expect("insert");
+        s.insert(
+            &Memory::new("nothing relevant", MemoryCategory::Fact, 1, vec![], vec![]),
+            None,
+        )
+        .await
+        .expect("insert");
         assert!(s.search_text("xyzzy", 10).await.expect("search").is_empty());
     }
 
@@ -241,13 +256,16 @@ mod tests {
         let s = store().await;
         let near = s
             .insert(
-                &Memory::new("near", "fact", 3, vec![]),
+                &Memory::new("near", MemoryCategory::Fact, 3, vec![], vec![]),
                 Some(&emb(0.9, 0.1)),
             )
             .await
             .expect("insert near");
         let _far = s
-            .insert(&Memory::new("far", "fact", 3, vec![]), Some(&emb(0.0, 1.0)))
+            .insert(
+                &Memory::new("far", MemoryCategory::Fact, 3, vec![], vec![]),
+                Some(&emb(0.0, 1.0)),
+            )
             .await
             .expect("insert far");
 
@@ -262,9 +280,12 @@ mod tests {
     #[tokio::test]
     async fn insert_without_embedding_has_no_vector() {
         let s = store().await;
-        s.insert(&Memory::new("no vector", "fact", 3, vec![]), None)
-            .await
-            .expect("insert");
+        s.insert(
+            &Memory::new("no vector", MemoryCategory::Fact, 3, vec![], vec![]),
+            None,
+        )
+        .await
+        .expect("insert");
         // KNN over an empty vec table yields nothing.
         let results = s.search_vector(&emb(1.0, 0.0), 5).await.expect("knn");
         assert!(results.is_empty());
@@ -275,7 +296,13 @@ mod tests {
         let s = store().await;
         let id = s
             .insert(
-                &Memory::new("hybrid roundtrip", "fact", 5, vec!["x".into()]),
+                &Memory::new(
+                    "hybrid roundtrip",
+                    MemoryCategory::Fact,
+                    5,
+                    vec![],
+                    vec!["x".into()],
+                ),
                 Some(&emb(0.5, 0.5)),
             )
             .await
@@ -293,7 +320,7 @@ mod tests {
     #[tokio::test]
     async fn importance_out_of_range_is_rejected() {
         let s = store().await;
-        let bad = Memory::new("too important", "fact", 9, vec![]);
+        let bad = Memory::new("too important", MemoryCategory::Fact, 9, vec![], vec![]);
         let err = s.insert(&bad, None).await;
         assert!(
             err.is_err(),

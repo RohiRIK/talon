@@ -9,7 +9,7 @@ pub mod store;
 pub use context::{BuiltContext, ContextBuilder};
 pub use error::MemoryError;
 pub use files::{MemoryMd, UserMd};
-pub use ltm::{LtmStore, Memory};
+pub use ltm::{LtmStore, Memory, MemoryCategory};
 pub use sqlite_store::SqliteStore;
 pub use store::MemoryStore;
 

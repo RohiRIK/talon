@@ -7,6 +7,7 @@ use crate::error::MemoryError;
 static MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("schema.sql")),
     (2, include_str!("schema_ltm.sql")),
+    (3, include_str!("schema_ltm_tags.sql")),
 ];
 
 /// Run all pending migrations on an open connection.
@@ -105,7 +106,7 @@ mod tests {
                 r.get(0)
             })
             .expect("query");
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 
     #[test]
