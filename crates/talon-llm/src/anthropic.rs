@@ -30,12 +30,20 @@ impl AnthropicProvider {
         messages: &[Message],
         tools: &[serde_json::Value],
     ) -> Result<LlmResponse, LlmError> {
-        let body = json!({
+        // Anthropic rejects role:"system" inside the messages array — it must be
+        // hoisted to a top-level `system` field. Partition here so the agent loop
+        // can stay provider-agnostic (it just prepends a Message::system).
+        let (system, chat) = split_system(messages);
+
+        let mut body = json!({
             "model": self.model,
             "max_tokens": 4096,
-            "messages": messages,
+            "messages": chat,
             "tools": tools,
         });
+        if let Some(system) = system {
+            body["system"] = json!(system);
+        }
 
         let resp = self
             .client
@@ -81,6 +89,25 @@ impl LlmProvider for AnthropicProvider {
     }
 }
 
+/// Split system messages out of the conversation. Returns the concatenated
+/// system text (Anthropic's top-level `system` field) and the remaining
+/// non-system messages. Multiple system messages are joined with a blank line.
+fn split_system(messages: &[Message]) -> (Option<String>, Vec<&Message>) {
+    let mut system_parts: Vec<String> = Vec::new();
+    let mut chat: Vec<&Message> = Vec::new();
+    for m in messages {
+        if m.role == "system" {
+            if let Some(text) = m.content.as_str() {
+                system_parts.push(text.to_string());
+            }
+        } else {
+            chat.push(m);
+        }
+    }
+    let system = (!system_parts.is_empty()).then(|| system_parts.join("\n\n"));
+    (system, chat)
+}
+
 /// Internal deserialization target — `LlmResponse` does not need to derive `Deserialize`.
 #[derive(Deserialize)]
 struct RawResponse {
@@ -117,6 +144,40 @@ mod tests {
             std::env::remove_var("TALON_LLM_MODEL");
         }
         assert_eq!(p.model, "claude-opus-4-7");
+    }
+
+    #[test]
+    fn split_system_hoists_system_and_keeps_chat_order() {
+        let msgs = vec![
+            Message::system("memory is on sqlite"),
+            Message::user("hello"),
+            Message::assistant("hi"),
+        ];
+        let (system, chat) = split_system(&msgs);
+        assert_eq!(system.as_deref(), Some("memory is on sqlite"));
+        assert_eq!(chat.len(), 2);
+        assert_eq!(chat[0].role, "user");
+        assert_eq!(chat[1].role, "assistant");
+    }
+
+    #[test]
+    fn split_system_joins_multiple_system_messages() {
+        let msgs = vec![
+            Message::system("first"),
+            Message::system("second"),
+            Message::user("hi"),
+        ];
+        let (system, chat) = split_system(&msgs);
+        assert_eq!(system.as_deref(), Some("first\n\nsecond"));
+        assert_eq!(chat.len(), 1);
+    }
+
+    #[test]
+    fn split_system_is_none_without_system_messages() {
+        let msgs = vec![Message::user("hi")];
+        let (system, chat) = split_system(&msgs);
+        assert!(system.is_none());
+        assert_eq!(chat.len(), 1);
     }
 
     #[test]

@@ -56,7 +56,13 @@ impl Agent {
         self.emit(AgentEvent::Started).await;
         self.persist(session_id, "user", &user_message).await;
 
-        let mut messages = vec![Message::user(user_message)];
+        // Every conversation opens with Talon's baseline system message (identity +
+        // memory location). Anthropic hoists it to the top-level `system` field;
+        // OpenAI-compatible providers accept the system role inline.
+        let mut messages = vec![
+            Message::system(crate::system_prompt::baseline_system_prompt()),
+            Message::user(user_message),
+        ];
 
         // Initial: Idle → Thinking before the first LLM call.
         state = state.transition(AgentState::Thinking)?;
@@ -511,6 +517,54 @@ mod tests {
                 .any(|e| matches!(e, AgentEvent::ToolResult { .. })),
             "ToolResult must be emitted after tool execution"
         );
+    }
+
+    #[tokio::test]
+    async fn agent_run_prepends_baseline_system_message() {
+        use std::sync::Mutex;
+
+        // Provider that records the messages it was handed on the first call.
+        struct CaptureProvider {
+            seen: Arc<Mutex<Vec<Message>>>,
+        }
+        impl LlmProvider for CaptureProvider {
+            fn complete<'a>(
+                &'a self,
+                messages: &'a [Message],
+                _tools: &'a [Value],
+            ) -> Pin<Box<dyn Future<Output = Result<LlmResponse, LlmError>> + Send + 'a>>
+            {
+                *self.seen.lock().expect("lock") = messages.to_vec();
+                Box::pin(async {
+                    Ok(LlmResponse {
+                        content: vec![ContentBlock::Text {
+                            text: "ok".to_string(),
+                        }],
+                        stop_reason: "end_turn".to_string(),
+                    })
+                })
+            }
+        }
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let provider = Arc::new(CaptureProvider {
+            seen: Arc::clone(&seen),
+        });
+        let (tx, _rx) = make_channel();
+        let mut agent = Agent::new(provider, make_dispatcher(), tx);
+        agent.run("sess-sys", "hi".to_string()).await.expect("run");
+
+        let messages = seen.lock().expect("lock");
+        assert_eq!(messages[0].role, "system", "system message must come first");
+        assert!(
+            messages[0]
+                .content
+                .as_str()
+                .expect("system content is text")
+                .contains("SQLite"),
+            "baseline must tell Talon its memory is on SQLite"
+        );
+        assert_eq!(messages[1].role, "user");
     }
 
     #[tokio::test]

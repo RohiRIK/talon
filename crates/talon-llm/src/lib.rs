@@ -61,6 +61,16 @@ pub struct Message {
 }
 
 impl Message {
+    /// Baseline/system instruction prepended to a conversation. Anthropic hoists
+    /// these to the top-level `system` field; OpenAI-compatible APIs accept the
+    /// `system` role inline. See `AnthropicProvider::complete_inner`.
+    pub fn system(content: impl Into<serde_json::Value>) -> Self {
+        Self {
+            role: "system".to_string(),
+            content: content.into(),
+        }
+    }
+
     pub fn user(content: impl Into<serde_json::Value>) -> Self {
         Self {
             role: "user".to_string(),
@@ -113,6 +123,13 @@ pub enum LlmError {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn message_system_sets_role() {
+        let m = Message::system("you are talon");
+        assert_eq!(m.role, "system");
+        assert_eq!(m.content, json!("you are talon"));
+    }
 
     #[test]
     fn message_user_sets_role() {
