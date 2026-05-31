@@ -692,7 +692,7 @@ cargo dist build --release   # produces tarballs for all targets
 - [x] 2.5.6 `crates/talon-memory/src/dedup.rs` — Semantic deduplication: embed new memories, sqlite-vec KNN cosine vs existing (threshold 0.85), merge duplicates instead of appending
 - [x] 2.5.7 `crates/talon-memory/src/promotion.rs` — Memory promotion: post-session hook moves high-importance working-memory facts → the `memories` table (same DB)
 - [x] 2.5.8 `crates/talon-memory/src/hybrid_search.rs` — Hybrid retrieval: FTS5 BM25 ⊕ sqlite-vec KNN, fused with Reciprocal Rank Fusion (RRF) in Rust
-- [ ] 2.5.9 `crates/talon-memory/src/cache.rs` — `SemanticCache`: embed LLM prompts, return cached response if similarity > 0.95. LRU in-memory with TTL. No Redis. (Iris LangCache pattern, doc #70)
+- [x] 2.5.9 `crates/talon-memory/src/cache.rs` — `SemanticCache`: embed LLM prompts, return cached response if similarity > 0.95. LRU in-memory with TTL. No Redis. (Iris LangCache pattern, doc #70)
 - [ ] 2.5.10 `crates/talon-memory/src/decay.rs` — `DecayEngine`: time-based importance decay, run as periodic task (once per day, not per query)
 - [ ] 2.5.11 Update `ContextBuilder` (Phase 2 task 2.7) to use `WorkingMemory::compact()` for auto-summarization instead of static window trimming
 - [ ] 2.5.12 Integration tests: fact extraction round-trip, dedup merges similar facts, hybrid search returns ranked results, semantic cache hit/miss, decay reduces importance over time

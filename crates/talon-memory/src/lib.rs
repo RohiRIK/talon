@@ -1,3 +1,4 @@
+pub mod cache;
 pub mod context;
 pub mod dedup;
 pub mod error;
@@ -11,6 +12,7 @@ pub mod sqlite_store;
 pub mod store;
 pub mod working;
 
+pub use cache::{CacheStats, SemanticCache};
 pub use context::{BuiltContext, ContextBuilder};
 pub use dedup::{DedupOutcome, Deduplicator, cosine_similarity};
 pub use error::MemoryError;
