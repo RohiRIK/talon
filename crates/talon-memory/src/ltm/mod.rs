@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod store;
 
-pub use store::LtmStore;
+pub use store::{LtmStore, MemoryStats};
 
 /// What kind of thing a memory records. Serialized to the DB and to/from LLM
 /// JSON as snake_case labels (`user_preference`, `decision`, …).

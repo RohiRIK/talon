@@ -196,6 +196,45 @@ impl LtmStore {
         Ok(n)
     }
 
+    /// Aggregate statistics over the stored memories, for `talon memory stats`.
+    pub async fn stats(&self) -> Result<MemoryStats, MemoryError> {
+        let s = self
+            .db
+            .pool()
+            .get()
+            .await?
+            .interact(|conn| -> rusqlite::Result<MemoryStats> {
+                let total: i64 =
+                    conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))?;
+                let avg_importance: f64 = conn.query_row(
+                    "SELECT COALESCE(AVG(importance), 0) FROM memories",
+                    [],
+                    |r| r.get(0),
+                )?;
+                let avg_decay_score: f64 = conn.query_row(
+                    "SELECT COALESCE(AVG(decay_score), 0) FROM memories",
+                    [],
+                    |r| r.get(0),
+                )?;
+                let by_category = {
+                    let mut stmt = conn.prepare(
+                        "SELECT category, COUNT(*) FROM memories
+                         GROUP BY category ORDER BY category",
+                    )?;
+                    stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+                        .collect::<rusqlite::Result<Vec<_>>>()?
+                };
+                Ok(MemoryStats {
+                    total,
+                    avg_importance,
+                    avg_decay_score,
+                    by_category,
+                })
+            })
+            .await??;
+        Ok(s)
+    }
+
     /// sqlite-vec brute-force KNN. Returns `(memory_id, distance)` nearest first.
     pub async fn search_vector(
         &self,
@@ -224,6 +263,19 @@ impl LtmStore {
             .await??;
         Ok(rows)
     }
+}
+
+/// Aggregate counts over the `memories` table (for `talon memory stats`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MemoryStats {
+    /// Total number of stored memories.
+    pub total: i64,
+    /// Mean importance (1–5), or 0.0 when empty.
+    pub avg_importance: f64,
+    /// Mean decay score (0–1), or 0.0 when empty.
+    pub avg_decay_score: f64,
+    /// `(category, count)` pairs, category-ascending.
+    pub by_category: Vec<(String, i64)>,
 }
 
 /// Map a `memories` row (9 columns, in the SELECT order used above) into a `Memory`.
@@ -456,6 +508,34 @@ mod tests {
         assert_eq!(
             s.get(id).await.expect("get").expect("present").importance,
             5
+        );
+    }
+
+    #[tokio::test]
+    async fn stats_aggregate_counts_and_averages() {
+        let s = store().await;
+        assert_eq!(s.stats().await.expect("stats").total, 0, "empty store");
+
+        s.insert(
+            &Memory::new("a", MemoryCategory::Fact, 2, vec![], vec![]),
+            None,
+        )
+        .await
+        .expect("insert");
+        s.insert(
+            &Memory::new("b", MemoryCategory::Decision, 4, vec![], vec![]),
+            None,
+        )
+        .await
+        .expect("insert");
+
+        let stats = s.stats().await.expect("stats");
+        assert_eq!(stats.total, 2);
+        assert!((stats.avg_importance - 3.0).abs() < 1e-9, "mean of 2 and 4");
+        assert!((stats.avg_decay_score - 1.0).abs() < 1e-6, "fresh memories");
+        assert_eq!(
+            stats.by_category,
+            vec![("decision".to_string(), 1), ("fact".to_string(), 1)]
         );
     }
 

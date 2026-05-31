@@ -10,7 +10,7 @@ use talon_core::approval::ApprovalLevel;
 use talon_core::tools::{Tool, ToolContext, ToolResult};
 use talon_gateway::{Gateway, GatewayContext, cli::CliGateway, http::HttpGateway, tui::TuiGateway};
 use talon_llm::{AnthropicProvider, GitHubCopilotProvider, LlmProvider};
-use talon_memory::{Database, SqliteStore};
+use talon_memory::{Database, LtmStore, SqliteStore};
 use talon_tools::mcp::{McpClient, McpServersConfig, adapt_server};
 use talon_tools::web::WebConfig;
 use talon_tools::{SessionSearchTool, WebExtractTool, WebSearchTool, timeouts};
@@ -252,16 +252,51 @@ async fn cmd_db_with(db: &Database, action: DbAction) -> Result<()> {
 }
 
 async fn cmd_memory(action: MemoryAction) -> Result<()> {
+    let db_path = default_db_path();
+    let db = Database::open(db_path.to_str().unwrap_or(":memory:"))
+        .map_err(|e| anyhow::anyhow!("failed to open database: {e}"))?;
+    db.init_schema()
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to run migrations: {e}"))?;
+    cmd_memory_with(&db, action).await
+}
+
+async fn cmd_memory_with(db: &Database, action: MemoryAction) -> Result<()> {
     match action {
-        MemoryAction::Stats => println!("talon memory stats — not yet implemented (Phase 2.5)"),
+        MemoryAction::Stats => {
+            let store = LtmStore::new(db.clone());
+            let s = store
+                .stats()
+                .await
+                .map_err(|e| anyhow::anyhow!("memory stats failed: {e}"))?;
+            println!("memories      : {}", s.total);
+            println!("avg importance: {:.2}", s.avg_importance);
+            println!("avg decay     : {:.2}", s.avg_decay_score);
+            for (category, count) in &s.by_category {
+                println!("  {category:<15}: {count}");
+            }
+        }
     }
     Ok(())
 }
 
 async fn cmd_cache(action: CacheAction) -> Result<()> {
+    // The semantic cache is an in-process LRU local to each running gateway
+    // (no Redis, no on-disk store — ADR 0008). A one-shot CLI invocation has no
+    // shared cache to act on, so these commands report that rather than faking
+    // persistence.
     match action {
-        CacheAction::Clear => println!("talon cache clear — not yet implemented (Phase 2.5)"),
-        CacheAction::Stats => println!("talon cache stats — not yet implemented (Phase 2.5)"),
+        CacheAction::Clear => {
+            println!("semantic cache is in-process (per running gateway) and not persisted.");
+            println!("it is emptied automatically when the process exits — nothing to clear.");
+        }
+        CacheAction::Stats => {
+            println!("semantic cache : in-process LRU, not persisted");
+            println!(
+                "hit threshold  : {:.2} cosine similarity",
+                talon_memory::cache::SEMANTIC_CACHE_THRESHOLD
+            );
+        }
     }
     Ok(())
 }
@@ -760,7 +795,9 @@ mod tests {
 
     #[tokio::test]
     async fn cmd_memory_stats_returns_ok() -> Result<()> {
-        cmd_memory(MemoryAction::Stats).await
+        let db = Database::open(":memory:").map_err(|e| anyhow::anyhow!("{e}"))?;
+        db.init_schema().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        cmd_memory_with(&db, MemoryAction::Stats).await
     }
 
     #[tokio::test]

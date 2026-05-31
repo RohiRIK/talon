@@ -21,7 +21,7 @@ pub use error::MemoryError;
 pub use facts::{FactCompleter, FactExtractor};
 pub use files::{MemoryMd, UserMd};
 pub use hybrid_search::{HybridSearch, reciprocal_rank_fusion};
-pub use ltm::{LtmStore, Memory, MemoryCategory};
+pub use ltm::{LtmStore, Memory, MemoryCategory, MemoryStats};
 pub use promotion::{Embedder, Promoter, PromotionReport};
 pub use sqlite_store::SqliteStore;
 pub use store::MemoryStore;
