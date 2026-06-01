@@ -119,19 +119,18 @@ So: **keep the runtime, skip the library.** That, I believe, is the concern behi
 | S3 | `CronJobTool` — create (via the §4.4 scope wizard) / list / delete jobs via NL | `crates/talon-tools/src/cronjob.rs` | NeedsApproval |
 | S4 | `talon serve` — daemon entrypoint, spawns gateways + scheduler | `talon/src/main.rs` | — |
 | S5 | Delivery routing — job output → `deliver_to` target (`origin`/`local`/`all`/`platform:chat_id:thread_id`) | reuse gateway send paths | — |
-| S6 | `talon cron list` — CLI that **renders jobs as a tree** (ships in the binary) | `crates/talon-gateway/src/cli.rs` | — |
+| S6 | `talon cron list` — CLI that **renders jobs as a tree** (ships in the binary) | `talon/src/cron_cli.rs` | — |
 
-**S6 — the tree view.** A first-class CLI subcommand (peer to the existing `talon memory` / `talon cache`). It renders jobs as a tree, using the job **DAG** as the natural hierarchy: root jobs at the top, `context_from` children nested beneath the job that feeds them. Each node shows name, next run (humanized: "in 2h"), schedule, `deliver_to`, and enabled/last-run status. Example:
+**S6 — the tree view.** A first-class CLI subcommand (peer to the existing `talon memory` / `talon cache`). It renders jobs as a tree, using the job **DAG** as the natural hierarchy: root jobs at the top, `context_from` children nested beneath the job that feeds them. Each node shows its status glyph, name, humanized next run, schedule, `deliver_to`, and last-run status. Actual output (`talon cron list`):
 
 ```
-talon cron
-├─ ● morning-brief        every day 08:00   → telegram:me     next: in 9h
-│  └─ ● follow-up-email    +30m after parent → telegram:me     next: chained
-├─ ● hourly-inbox-scan    every 1h          → local           next: in 12m
-└─ ○ weekly-report        Mon 09:00         → all             (disabled)
+● morning-brief  in 8h  (0 8 * * *)  → telegram:me  [ran 1d ago]
+  ● follow-up-email  in 22m  (every 30m)  → telegram:me  [ran 3h ago]
+● hourly-inbox-scan  in 9m  (0 * * * *)  → local  [ran 3h ago]
+○ weekly-report  —  (0 9 * * 1)  → all  [never run]
 ```
 
-`●` enabled · `○` disabled · indentation = `context_from` dependency. Implemented with a small tree-drawing helper (e.g. `termtree`) or hand-rolled box-drawing — no heavy dep.
+Per-node format: `{glyph} {name}  {next-run}  ({schedule})  → {deliver_to}  [{last-run}]`. `●` enabled · `○` disabled · two-space indent = `context_from` dependency. Next-run humanizes to `in 2h` / `overdue` / `—` (never run); last-run to `ran 3h ago` / `never run`. Hand-rolled — no tree-drawing dependency. The renderer is a pure function over `(jobs, now)`, so it is unit-tested without wall-clock or a DB, and a dependency cycle can never hide a job (orphans are surfaced at the root).
 
 These are tasks **6.6, 6.7, 6.8, 6.11** in `PLAN.md`, **pulled out of Phase 6** (which otherwise bundles unrelated WASM work) into a standalone mini-phase. WASM (6.1–6.5, 6.9, 6.10) stays in Phase 6 and is **not** a dependency.
 
