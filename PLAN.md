@@ -616,9 +616,11 @@ cargo run --release -- --message "search Rust async news, summarize top 3"
 - [ ] 6.3 `crates/talon-plugins/src/store.rs` — `SkillStore`: load `.wasm` from `~/.talon/skills/`, hot-reload via `notify`
 - [ ] 6.4 `crates/talon-plugins/src/sandbox.rs` — capability gating: WASM only calls host functions declared in manifest
 - [ ] 6.5 Each skill becomes `Arc<dyn Tool>` adapter (replaces subprocess adapter from Phase 5 for compiled plugins)
-- [ ] 6.6 `crates/talon-memory/src/cron.rs` — `CronStore` table: id, expr, prompt, last_run, next_run
-- [ ] 6.7 `crates/talon-core/src/scheduler.rs` — `Scheduler`: tokio interval ticker, polls due jobs, invokes `Agent::run`
-- [ ] 6.8 `crates/talon-tools/src/cronjob.rs` — `CronJobTool` (NeedsApproval): create/list/delete cron jobs
+- [x] 6.6 `crates/talon-memory/src/cron.rs` — `CronStore` table: id, expr, prompt, last_run, next_run
+- [x] 6.7 `crates/talon-core/src/scheduler.rs` — `Scheduler`: tokio interval ticker, polls due jobs, invokes `Agent::run` (via `JobRunner` seam; `talon serve` wires the concrete runner)
+- [x] 6.8 `crates/talon-tools/src/cronjob.rs` — `CronJobTool` (NeedsApproval): create/list/delete cron jobs (+ §4.4 creation-time scope wizard `predict_scope` and runtime `granted_scope` enforcement via `effective_unattended_level`)
+- [x] 6.8a `talon/src/main.rs` — `talon serve` daemon: wires `Scheduler` + `TalonJobRunner` (concrete `JobRunner`) alongside a foreground gateway, graceful drain via `CancellationToken` + `TaskTracker`; unattended runs deny `ApprovalRequested`
+- [x] 6.8b `talon/src/cron_cli.rs` — `talon cron` tree-view CLI (SPEC §4.1 S6): `context_from`-nested DAG render + `enable`/`disable`/`rm`
 - [ ] 6.9 `examples/skills/hello/` — example skill compiling to `.wasm`
 - [ ] 6.10 Hot-reload test: drop `.wasm` → appears in tool list within 2s
 - [ ] 6.11 Cron test: `*/1 * * * *` job fires on the minute

@@ -8,6 +8,7 @@ static MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("schema.sql")),
     (2, include_str!("schema_ltm.sql")),
     (3, include_str!("schema_ltm_tags.sql")),
+    (4, include_str!("schema_cron.sql")),
 ];
 
 /// Run all pending migrations on an open connection.
@@ -81,6 +82,7 @@ mod tests {
             "memories",
             "memories_fts",
             "vec_memories",
+            "cron_jobs",
         ] {
             assert!(
                 tables.iter().any(|t| t == expected),
@@ -106,7 +108,7 @@ mod tests {
                 r.get(0)
             })
             .expect("query");
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
     }
 
     #[test]

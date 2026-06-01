@@ -6,10 +6,10 @@ use tokio::sync::mpsc;
 use tracing::instrument;
 
 use talon_llm::{ContentBlock, LlmProvider, Message};
-use talon_memory::Database;
+use talon_memory::{Database, GrantedScope};
 
 use crate::{
-    approval::{ApprovalLevel, ApprovalMembrane},
+    approval::{ApprovalLevel, ApprovalMembrane, effective_unattended_level},
     error::CoreError,
     events::AgentEvent,
     state::AgentState,
@@ -23,6 +23,10 @@ pub struct Agent {
     dispatcher: ToolDispatcher,
     events: mpsc::Sender<AgentEvent>,
     db: Option<Arc<Database>>,
+    /// When set, the agent runs **unattended** (a cron job): a tool call is
+    /// re-classified through `effective_unattended_level` against this granted
+    /// scope before the approval membrane sees it (SPEC §4.4).
+    unattended_scope: Option<GrantedScope>,
 }
 
 impl Agent {
@@ -36,11 +40,20 @@ impl Agent {
             dispatcher,
             events,
             db: None,
+            unattended_scope: None,
         }
     }
 
     pub fn with_db(mut self, db: Arc<Database>) -> Self {
         self.db = Some(db);
+        self
+    }
+
+    /// Run this agent unattended under a pre-authorized capability scope. Tool
+    /// calls outside the scope escalate (fire `ApprovalRequested`) instead of
+    /// running silently; `Dangerous` tools always escalate regardless.
+    pub fn with_unattended_scope(mut self, scope: GrantedScope) -> Self {
+        self.unattended_scope = Some(scope);
         self
     }
 
@@ -154,11 +167,18 @@ impl Agent {
                 .await;
 
                 // Approval: ask tool for its level; unknown tools are Dangerous.
-                let level = self
+                let base_level = self
                     .dispatcher
                     .get(&name)
                     .map(|t| t.approval_level(&args))
                     .unwrap_or(ApprovalLevel::Dangerous);
+
+                // Unattended runs re-classify against the job's granted scope so
+                // out-of-scope calls escalate instead of passing silently (§4.4).
+                let level = match &self.unattended_scope {
+                    Some(scope) => effective_unattended_level(base_level, scope, &name, &args),
+                    None => base_level,
+                };
 
                 if let Err(e) = membrane.check(id.clone(), &name, &args, level).await {
                     self.emit(AgentEvent::Failed(e.to_string())).await;

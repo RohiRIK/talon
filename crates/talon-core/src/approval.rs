@@ -1,4 +1,7 @@
+use serde_json::Value;
 use tokio::sync::mpsc;
+
+use talon_memory::GrantedScope;
 
 use crate::error::CoreError;
 use crate::events::AgentEvent;
@@ -10,6 +13,67 @@ pub enum ApprovalLevel {
     Safe,
     NeedsApproval,
     Dangerous,
+}
+
+/// Shell control operators that turn a single allowlisted command into a vector
+/// for arbitrary follow-on commands. A Bash grant must never permit these.
+const SHELL_CONTROL_OPERATORS: [&str; 7] = [";", "&&", "||", "|", "`", "$(", "\n"];
+
+/// Is a concrete Bash `command` permitted by a job's `bash_patterns` allowlist?
+///
+/// A pattern matches only when the command *is* the pattern or begins with the
+/// pattern followed by a space — `git pull` permits `git pull origin main` but
+/// not `git pullx`. Any shell control operator (`;`, `&&`, `|`, backtick, …)
+/// rejects outright, so a `git pull` grant can never chain into `rm -rf`.
+pub fn bash_command_allowed(command: &str, patterns: &[String]) -> bool {
+    let cmd = command.trim();
+    if cmd.is_empty() {
+        return false;
+    }
+    if SHELL_CONTROL_OPERATORS.iter().any(|op| cmd.contains(op)) {
+        return false;
+    }
+    patterns.iter().any(|p| {
+        let p = p.trim();
+        !p.is_empty() && (cmd == p || cmd.starts_with(&format!("{p} ")))
+    })
+}
+
+/// Does a job's `granted_scope` pre-authorize this tool call for unattended use?
+/// The `terminal` tool additionally requires its `command` to match the Bash
+/// allowlist; every other tool is permitted by name alone.
+pub fn scope_allows(scope: &GrantedScope, tool_name: &str, args: &Value) -> bool {
+    if !scope.tools.iter().any(|t| t == tool_name) {
+        return false;
+    }
+    if tool_name == "terminal" {
+        let command = args["command"].as_str().unwrap_or_default();
+        return bash_command_allowed(command, &scope.bash_patterns);
+    }
+    true
+}
+
+/// The effective approval level for a tool call running **unattended** under a
+/// granted scope (SPEC §4.4). `Safe` reads always pass; a `Dangerous` tool is
+/// never auto-granted and always escalates; a `NeedsApproval` tool runs only if
+/// it is inside the pre-authorized scope, otherwise it escalates.
+pub fn effective_unattended_level(
+    base: ApprovalLevel,
+    scope: &GrantedScope,
+    tool_name: &str,
+    args: &Value,
+) -> ApprovalLevel {
+    match base {
+        ApprovalLevel::Safe => ApprovalLevel::Safe,
+        ApprovalLevel::Dangerous => ApprovalLevel::Dangerous,
+        ApprovalLevel::NeedsApproval => {
+            if scope_allows(scope, tool_name, args) {
+                ApprovalLevel::Safe
+            } else {
+                ApprovalLevel::Dangerous
+            }
+        }
+    }
 }
 
 /// Sits between the agent loop and every tool call.
@@ -65,7 +129,128 @@ impl ApprovalMembrane {
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
+
+    fn scope(tools: &[&str], bash: &[&str]) -> GrantedScope {
+        GrantedScope {
+            tools: tools.iter().map(|s| s.to_string()).collect(),
+            bash_patterns: bash.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    // ── bash_command_allowed ────────────────────────────────────────────────
+
+    #[test]
+    fn bash_exact_and_prefixed_match() {
+        let patterns = vec!["git pull".to_string()];
+        assert!(bash_command_allowed("git pull", &patterns));
+        assert!(bash_command_allowed("git pull origin main", &patterns));
+    }
+
+    #[test]
+    fn bash_rejects_non_prefix() {
+        let patterns = vec!["git pull".to_string()];
+        assert!(!bash_command_allowed("git pullx", &patterns));
+        assert!(!bash_command_allowed("rm -rf /", &patterns));
+    }
+
+    #[test]
+    fn bash_rejects_chaining_into_danger() {
+        let patterns = vec!["git pull".to_string()];
+        assert!(!bash_command_allowed("git pull; rm -rf /", &patterns));
+        assert!(!bash_command_allowed("git pull && rm -rf /", &patterns));
+        assert!(!bash_command_allowed("git pull | sh", &patterns));
+        assert!(!bash_command_allowed("git pull `whoami`", &patterns));
+        assert!(!bash_command_allowed("git pull $(whoami)", &patterns));
+    }
+
+    #[test]
+    fn bash_empty_command_or_patterns_denied() {
+        assert!(!bash_command_allowed("", &["git pull".to_string()]));
+        assert!(!bash_command_allowed("git pull", &[]));
+    }
+
+    // ── scope_allows ────────────────────────────────────────────────────────
+
+    #[test]
+    fn scope_allows_named_tool() {
+        let s = scope(&["web_search"], &[]);
+        assert!(scope_allows(&s, "web_search", &json!({})));
+        assert!(!scope_allows(&s, "send_message", &json!({})));
+    }
+
+    #[test]
+    fn scope_terminal_requires_bash_match() {
+        let s = scope(&["terminal"], &["git pull"]);
+        assert!(scope_allows(
+            &s,
+            "terminal",
+            &json!({"command": "git pull"})
+        ));
+        assert!(!scope_allows(
+            &s,
+            "terminal",
+            &json!({"command": "rm -rf /"})
+        ));
+        // terminal in tools but no command → denied.
+        assert!(!scope_allows(&s, "terminal", &json!({})));
+    }
+
+    // ── effective_unattended_level ──────────────────────────────────────────
+
+    #[test]
+    fn unattended_safe_stays_safe() {
+        let s = scope(&[], &[]);
+        assert_eq!(
+            effective_unattended_level(ApprovalLevel::Safe, &s, "read_file", &json!({})),
+            ApprovalLevel::Safe
+        );
+    }
+
+    #[test]
+    fn unattended_dangerous_always_escalates() {
+        // Even if (mistakenly) listed in scope, Dangerous never auto-grants.
+        let s = scope(&["terminal"], &["rm -rf /"]);
+        assert_eq!(
+            effective_unattended_level(
+                ApprovalLevel::Dangerous,
+                &s,
+                "terminal",
+                &json!({"command": "rm -rf /"})
+            ),
+            ApprovalLevel::Dangerous
+        );
+    }
+
+    #[test]
+    fn unattended_needs_approval_in_scope_runs_free() {
+        let s = scope(&["send_message"], &[]);
+        assert_eq!(
+            effective_unattended_level(
+                ApprovalLevel::NeedsApproval,
+                &s,
+                "send_message",
+                &json!({})
+            ),
+            ApprovalLevel::Safe
+        );
+    }
+
+    #[test]
+    fn unattended_needs_approval_out_of_scope_escalates() {
+        let s = scope(&["read_file"], &[]);
+        assert_eq!(
+            effective_unattended_level(
+                ApprovalLevel::NeedsApproval,
+                &s,
+                "send_message",
+                &json!({})
+            ),
+            ApprovalLevel::Dangerous
+        );
+    }
 
     #[test]
     fn approval_level_equality() {

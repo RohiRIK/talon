@@ -38,8 +38,9 @@ This applies to: Talon's system prompt, tool `schema()` descriptions, `SessionSe
 
 ## Current State
 
-**Phase: 6 — Next.** Phases 0–5 complete (Phase 5: 2026-05-29). `cargo nextest run --workspace` → 383/383 green.
-Phase 5 added web_search/web_extract (Safe), SubprocessPlugin + MCP client/adapter/config (NeedsApproval), and a feature-gated BrowserTool, all registered in `build_gateway_context` with per-class timeouts. Deferred: 4.19 init wizard, 4.24 Telegram live smoke. **Pending verification:** Phase 5 live smoke test (real `web_search` + a real MCP server end-to-end) — code path wired, not yet exercised against the network. See `PLAN.md`.
+**Phase: 6 — In progress (scheduling half done; WASM plugins pending).** Phases 0–5 complete (Phase 5: 2026-05-29). `cargo nextest run --workspace` → 557/557 green.
+Phase 5 added web_search/web_extract (Safe), SubprocessPlugin + MCP client/adapter/config (NeedsApproval), and a feature-gated BrowserTool, all registered in `build_gateway_context` with per-class timeouts. Deferred: 4.19 init wizard, 4.24 Telegram live smoke. **Pending verification:** Phase 5 live smoke test (real `web_search` + a real MCP server end-to-end) — code path wired, not yet exercised against the network.
+**Phase 6 scheduling subsystem built (2026-06-01):** `CronStore` (talon-memory) + self-rolled tokio `Scheduler` tick-loop (talon-core, `JobRunner` seam) + `talon serve` daemon wiring the concrete `TalonJobRunner` with graceful drain + `CronJobTool` with §4.4 creation-time scope wizard (`predict_scope`) and runtime `granted_scope` enforcement (`effective_unattended_level`: out-of-scope NeedsApproval → Dangerous → denied unattended; Dangerous never auto-granted) + `talon cron` tree-view CLI. Engine locked: SQLite CronStore SSoT + `croner` parser + tokio tick-loop (NOT tokio-cron-scheduler). **Pending:** 6.11 live "fires on the minute" cron smoke; WASM plugin half (6.1–6.5, 6.9–6.10) is the remainder of the Phase 6 exit gate. See `PLAN.md`.
 
 ---
 

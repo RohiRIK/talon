@@ -12,7 +12,8 @@ rust-version.workspace = true
 talon-llm    = { path = "../talon-llm" }
 talon-memory = { path = "../talon-memory" }
 
-tokio.workspace     = true
+tokio.workspace      = true
+tokio-util.workspace = true
 futures.workspace   = true
 serde.workspace     = true
 serde_json.workspace = true

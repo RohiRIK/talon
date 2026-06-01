@@ -6,14 +6,22 @@ use std::io::{self, Write as _};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 use talon_core::approval::ApprovalLevel;
+use talon_core::events::AgentEvent;
+use talon_core::scheduler::{JobOutcome, JobRunner, Scheduler};
 use talon_core::tools::{Tool, ToolContext, ToolResult};
 use talon_gateway::{Gateway, GatewayContext, cli::CliGateway, http::HttpGateway, tui::TuiGateway};
 use talon_llm::{AnthropicProvider, GitHubCopilotProvider, LlmProvider};
-use talon_memory::{Database, LtmStore, SqliteStore};
+use talon_memory::{CronJob, CronStore, Database, LtmStore, SqliteStore};
 use talon_tools::mcp::{McpClient, McpServersConfig, adapt_server};
 use talon_tools::web::WebConfig;
-use talon_tools::{SessionSearchTool, WebExtractTool, WebSearchTool, timeouts};
+use talon_tools::{CronJobTool, SessionSearchTool, WebExtractTool, WebSearchTool, timeouts};
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
+
+mod cron_cli;
 
 // ── CLI definition ────────────────────────────────────────────────────────────
 
@@ -71,6 +79,17 @@ enum Commands {
     },
     /// Diagnostics — checks API key, DB integrity, plugin health, network.
     Doctor,
+    /// Run the long-lived daemon: cron scheduler + a foreground gateway.
+    Serve {
+        /// Gateway to run alongside the scheduler: cli, tui, http, telegram.
+        #[arg(long, default_value = "http", value_name = "GATEWAY")]
+        gateway: String,
+    },
+    /// Inspect and manage scheduled jobs (rendered as a tree).
+    Cron {
+        #[command(subcommand)]
+        action: cron_cli::CronAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -185,6 +204,8 @@ async fn main() -> Result<()> {
         Some(Commands::Memory { action }) => cmd_memory(action).await,
         Some(Commands::Cache { action }) => cmd_cache(action).await,
         Some(Commands::Doctor) => cmd_doctor().await,
+        Some(Commands::Serve { gateway }) => cmd_serve(gateway, cli.accessible).await,
+        Some(Commands::Cron { action }) => cron_cli::run(action).await,
         None => cmd_run(cli.message, cli.config, cli.gateway, cli.accessible).await,
     }
 }
@@ -306,33 +327,43 @@ async fn cmd_doctor() -> Result<()> {
     Ok(())
 }
 
-async fn cmd_run(
-    message: Option<String>,
-    _config: Option<PathBuf>,
-    gateway_flag: String,
-    accessible: bool,
-) -> Result<()> {
+/// Resolve the LLM provider name and (possibly empty) API key from env +
+/// keychain. Returns `Ok(None)` when a key is required but missing — the caller
+/// prints guidance and exits cleanly. Shared by `cmd_run` and `cmd_serve`.
+fn resolve_provider_and_key() -> Result<Option<(String, String)>> {
     let provider_name =
         std::env::var("TALON_LLM_PROVIDER").unwrap_or_else(|_| "anthropic".to_string());
 
     // Key-less providers (github-copilot, claude-code) don't need TALON_LLM_API_KEY.
     let needs_api_key = matches!(provider_name.as_str(), "anthropic" | "openai");
 
-    let api_key = if needs_api_key {
-        let key = std::env::var("TALON_LLM_API_KEY")
-            .ok()
-            .or_else(load_api_key)
-            .unwrap_or_default();
-        if key.is_empty() {
-            println!(
-                "API key not configured. Run `talon init`, set TALON_LLM_API_KEY, \
-                 or use a key-less provider: TALON_LLM_PROVIDER=github-copilot"
-            );
-            return Ok(());
-        }
-        key
-    } else {
-        String::new()
+    if !needs_api_key {
+        return Ok(Some((provider_name, String::new())));
+    }
+
+    let key = std::env::var("TALON_LLM_API_KEY")
+        .ok()
+        .or_else(load_api_key)
+        .unwrap_or_default();
+    if key.is_empty() {
+        println!(
+            "API key not configured. Run `talon init`, set TALON_LLM_API_KEY, \
+             or use a key-less provider: TALON_LLM_PROVIDER=github-copilot"
+        );
+        return Ok(None);
+    }
+    Ok(Some((provider_name, key)))
+}
+
+async fn cmd_run(
+    message: Option<String>,
+    _config: Option<PathBuf>,
+    gateway_flag: String,
+    accessible: bool,
+) -> Result<()> {
+    let (provider_name, api_key) = match resolve_provider_and_key()? {
+        Some(pair) => pair,
+        None => return Ok(()),
     };
 
     let ctx = build_gateway_context(&provider_name, api_key).await?;
@@ -348,30 +379,39 @@ async fn cmd_run(
     }
 
     // Multi-turn mode: choose gateway based on --gateway flag.
-    let gateway: Arc<dyn Gateway> = match gateway_flag.as_str() {
+    let gateway = select_gateway(&gateway_flag, &ctx, accessible)?;
+    gateway.run().await.map_err(|e| anyhow::anyhow!("{e}"))
+}
+
+/// Build the foreground gateway selected by `--gateway`. "cli" and any unknown
+/// value fall back to CLI. Shared by `cmd_run` and `cmd_serve`.
+fn select_gateway(
+    gateway_flag: &str,
+    ctx: &Arc<GatewayContext>,
+    accessible: bool,
+) -> Result<Arc<dyn Gateway>> {
+    let gateway: Arc<dyn Gateway> = match gateway_flag {
         "http" => {
             let addr = "127.0.0.1:7777".parse().context("invalid HTTP addr")?;
-            Arc::new(HttpGateway::new(Arc::clone(&ctx), addr))
+            Arc::new(HttpGateway::new(Arc::clone(ctx), addr))
         }
-        "tui" => Arc::new(TuiGateway::new(Arc::clone(&ctx), accessible, "talon")),
+        "tui" => Arc::new(TuiGateway::new(Arc::clone(ctx), accessible, "talon")),
         #[cfg(feature = "telegram")]
         "telegram" => {
-            let gw = talon_gateway::telegram::TelegramGateway::from_env(Arc::clone(&ctx))
+            let gw = talon_gateway::telegram::TelegramGateway::from_env(Arc::clone(ctx))
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             Arc::new(gw)
         }
         _ => {
-            // "cli" and any unknown value fall back to CLI.
             let mode = if accessible {
                 talon_gateway::RenderMode::Accessible
             } else {
                 talon_gateway::RenderMode::Plain
             };
-            Arc::new(CliGateway::new(Arc::clone(&ctx), mode))
+            Arc::new(CliGateway::new(Arc::clone(ctx), mode))
         }
     };
-
-    gateway.run().await.map_err(|e| anyhow::anyhow!("{e}"))
+    Ok(gateway)
 }
 
 async fn build_gateway_context(provider_name: &str, api_key: String) -> Result<GatewayContext> {
@@ -456,10 +496,252 @@ async fn build_gateway_context(provider_name: &str, api_key: String) -> Result<G
         db.init_schema().await.ok();
         let store = Arc::new(SqliteStore::new(Arc::clone(db)));
         ctx = ctx.with_tool(Arc::new(SessionSearchTool::new(store)));
+        // Scheduling surface: create/list/delete cron jobs (NeedsApproval).
+        let cron_store = Arc::new(CronStore::new(Arc::clone(db)));
+        ctx = ctx.with_tool(Arc::new(CronJobTool::new(cron_store)));
         ctx = ctx.with_db(Arc::clone(db));
     }
 
     Ok(ctx)
+}
+
+// ── Daemon (`talon serve`) ────────────────────────────────────────────────────
+
+const DEFAULT_SCHEDULER_TICK_SECS: u64 = 30;
+/// Bounded grace for in-flight cron jobs to finish after a shutdown signal.
+const SHUTDOWN_GRACE_SECS: u64 = 10;
+
+/// Where a scheduled job's output is routed (SPEC §4.2 deliver target).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DeliverTarget {
+    /// Back to the session/channel that created the job (default).
+    Origin,
+    /// The local CLI/log only — never pushed to a remote channel.
+    Local,
+    /// Fan out to every connected gateway.
+    All,
+    /// A specific platform conversation: `platform:chat[:thread]`.
+    Platform {
+        platform: String,
+        chat_id: String,
+        thread_id: Option<String>,
+    },
+}
+
+/// Parse a `deliver_to` string into a [`DeliverTarget`]. Pure and testable.
+/// Grammar: `origin` | `local` | `all` | `platform:chat[:thread]`.
+fn parse_deliver_target(s: &str) -> DeliverTarget {
+    match s.trim() {
+        "" | "origin" => DeliverTarget::Origin,
+        "local" => DeliverTarget::Local,
+        "all" => DeliverTarget::All,
+        other => {
+            let mut parts = other.splitn(3, ':');
+            let platform = parts.next().unwrap_or_default().to_string();
+            match parts.next() {
+                Some(chat_id) if !platform.is_empty() && !chat_id.is_empty() => {
+                    DeliverTarget::Platform {
+                        platform,
+                        chat_id: chat_id.to_string(),
+                        thread_id: parts.next().map(str::to_string).filter(|t| !t.is_empty()),
+                    }
+                }
+                // Anything we can't parse routes to the origin rather than dropping.
+                _ => DeliverTarget::Origin,
+            }
+        }
+    }
+}
+
+/// The concrete [`JobRunner`] for the daemon: builds a fresh agent per job from
+/// the shared [`GatewayContext`], runs the prompt to completion, accumulates the
+/// assistant text, and routes it to the job's `deliver_to` target.
+///
+/// Unattended-safety: any tool that asks for approval mid-run is **denied** —
+/// a scheduled job never silently runs a `NeedsApproval`/`Dangerous` tool.
+/// Phase 4's scope wizard pre-grants a per-job tool allowlist; until then the
+/// only safe default is to refuse escalation.
+struct TalonJobRunner {
+    ctx: Arc<GatewayContext>,
+}
+
+impl JobRunner for TalonJobRunner {
+    fn run(&self, job: CronJob) -> Pin<Box<dyn Future<Output = JobOutcome> + Send + '_>> {
+        let ctx = Arc::clone(&self.ctx);
+        Box::pin(async move {
+            let (tx, mut rx) = mpsc::channel::<AgentEvent>(64);
+            // Run unattended under the job's pre-authorized scope: out-of-scope
+            // tool calls escalate (and are denied below) rather than running.
+            let mut agent = ctx
+                .build_agent(tx)
+                .with_unattended_scope(job.granted_scope.clone());
+
+            let session_id = job.session_id.clone();
+            let prompt = job.prompt.clone();
+            let deliver_to = job.deliver_to.clone();
+            let job_label = job.name.clone().unwrap_or_else(|| job.id.clone());
+
+            // Drive the agent on its own task so we can drain events concurrently;
+            // the channel closes when the agent (and its tx) drop.
+            let handle = tokio::spawn(async move {
+                agent
+                    .run(&session_id, prompt)
+                    .await
+                    .map_err(|e| e.to_string())
+            });
+
+            let mut output = String::new();
+            let mut succeeded = false;
+            while let Some(event) = rx.recv().await {
+                match event {
+                    AgentEvent::Text { content } => {
+                        if !output.is_empty() {
+                            output.push('\n');
+                        }
+                        output.push_str(&content);
+                    }
+                    AgentEvent::ApprovalRequested { tx, tool_name, .. } => {
+                        tracing::warn!(
+                            job = %job_label,
+                            tool = %tool_name,
+                            "scheduled job requested tool approval — denying (unattended)"
+                        );
+                        let _ = tx.send(false);
+                    }
+                    AgentEvent::Completed => succeeded = true,
+                    AgentEvent::Failed(msg) => {
+                        tracing::error!(job = %job_label, error = %msg, "scheduled job failed");
+                        succeeded = false;
+                    }
+                    _ => {}
+                }
+            }
+
+            // Surface a panic/await error from the agent task as a failure.
+            if let Ok(Err(e)) = handle.await {
+                tracing::error!(job = %job_label, error = %e, "agent run errored");
+                succeeded = false;
+            }
+
+            let final_output = (!output.is_empty()).then_some(output.clone());
+            deliver(&job_label, &deliver_to, final_output.as_deref()).await;
+
+            if succeeded {
+                JobOutcome::ok(final_output)
+            } else {
+                JobOutcome::failed()
+            }
+        })
+    }
+}
+
+/// Route a finished job's output to its target. Phase 3 logs the delivery; live
+/// remote sends (Telegram et al.) are wired in a follow-up live-smoke pass.
+async fn deliver(job_label: &str, deliver_to: &str, output: Option<&str>) {
+    let target = parse_deliver_target(deliver_to);
+    let preview = output.unwrap_or("(no output)");
+    tracing::info!(
+        job = %job_label,
+        target = ?target,
+        chars = preview.len(),
+        "cron job delivered"
+    );
+}
+
+async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
+    let (provider_name, api_key) = match resolve_provider_and_key()? {
+        Some(pair) => pair,
+        None => return Ok(()),
+    };
+
+    let ctx = Arc::new(build_gateway_context(&provider_name, api_key).await?);
+
+    let db = ctx
+        .db
+        .clone()
+        .context("serve requires a database — none was opened")?;
+    let store = CronStore::new(db);
+
+    let tick_secs = std::env::var("TALON_SCHEDULER_TICK_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_SCHEDULER_TICK_SECS);
+
+    let runner = Arc::new(TalonJobRunner {
+        ctx: Arc::clone(&ctx),
+    });
+    let scheduler = Scheduler::new(store, runner).with_tick(Duration::from_secs(tick_secs));
+
+    let cancel = CancellationToken::new();
+    let tracker = TaskTracker::new();
+
+    // Scheduler tick-loop.
+    let scheduler_handle = {
+        let cancel = cancel.clone();
+        let tracker = tracker.clone();
+        tokio::spawn(async move { scheduler.run(cancel, tracker).await })
+    };
+
+    // Foreground gateway — aborted on shutdown; the scheduler is what we drain.
+    let gateway = select_gateway(&gateway_flag, &ctx, accessible)?;
+    let gateway_handle =
+        tokio::spawn(async move { gateway.run().await.map_err(|e| e.to_string()) });
+
+    tracing::info!(
+        gateway = %gateway_flag,
+        tick_secs,
+        "talon serve started — scheduler + gateway running"
+    );
+
+    // Block until a shutdown signal or the gateway exits on its own.
+    tokio::select! {
+        _ = shutdown_signal() => tracing::info!("shutdown signal received"),
+        res = gateway_handle => match res {
+            Ok(Ok(())) => tracing::info!("gateway exited"),
+            Ok(Err(e)) => tracing::error!(error = %e, "gateway errored"),
+            Err(e) => tracing::error!(error = %e, "gateway task join failed"),
+        },
+    }
+
+    // Stop accepting new ticks, then let in-flight jobs drain within the grace.
+    cancel.cancel();
+    let _ = scheduler_handle.await;
+    tracker.close();
+    match tokio::time::timeout(Duration::from_secs(SHUTDOWN_GRACE_SECS), tracker.wait()).await {
+        Ok(()) => tracing::info!("all in-flight jobs drained"),
+        Err(_) => tracing::warn!(
+            grace_secs = SHUTDOWN_GRACE_SECS,
+            "drain grace elapsed — some jobs may have been cut short"
+        ),
+    }
+
+    Ok(())
+}
+
+/// Resolve when the process should begin a graceful shutdown: Ctrl-C on every
+/// platform, plus SIGTERM on Unix (the signal a service manager sends).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(e) => tracing::error!(error = %e, "failed to install SIGTERM handler"),
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = terminate => {}
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -683,6 +965,72 @@ mod tests {
         let cli = Cli::try_parse_from(["talon", "doctor"])?;
         assert!(matches!(cli.command, Some(Commands::Doctor)));
         Ok(())
+    }
+
+    #[test]
+    fn cli_parses_serve_defaults_to_http() -> Result<()> {
+        let cli = Cli::try_parse_from(["talon", "serve"])?;
+        match cli.command {
+            Some(Commands::Serve { gateway }) => assert_eq!(gateway, "http"),
+            _ => panic!("expected serve subcommand"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn cli_parses_serve_with_gateway() -> Result<()> {
+        let cli = Cli::try_parse_from(["talon", "serve", "--gateway", "telegram"])?;
+        match cli.command {
+            Some(Commands::Serve { gateway }) => assert_eq!(gateway, "telegram"),
+            _ => panic!("expected serve subcommand"),
+        }
+        Ok(())
+    }
+
+    // ── parse_deliver_target ────────────────────────────────────────────────────
+
+    #[test]
+    fn deliver_target_empty_and_origin_are_origin() {
+        assert_eq!(parse_deliver_target(""), DeliverTarget::Origin);
+        assert_eq!(parse_deliver_target("origin"), DeliverTarget::Origin);
+        assert_eq!(parse_deliver_target("  origin  "), DeliverTarget::Origin);
+    }
+
+    #[test]
+    fn deliver_target_local_and_all() {
+        assert_eq!(parse_deliver_target("local"), DeliverTarget::Local);
+        assert_eq!(parse_deliver_target("all"), DeliverTarget::All);
+    }
+
+    #[test]
+    fn deliver_target_platform_chat() {
+        assert_eq!(
+            parse_deliver_target("telegram:12345"),
+            DeliverTarget::Platform {
+                platform: "telegram".to_string(),
+                chat_id: "12345".to_string(),
+                thread_id: None,
+            }
+        );
+    }
+
+    #[test]
+    fn deliver_target_platform_chat_thread() {
+        assert_eq!(
+            parse_deliver_target("telegram:12345:67"),
+            DeliverTarget::Platform {
+                platform: "telegram".to_string(),
+                chat_id: "12345".to_string(),
+                thread_id: Some("67".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn deliver_target_malformed_falls_back_to_origin() {
+        // Bare token with no chat id is not a valid platform spec.
+        assert_eq!(parse_deliver_target("telegram"), DeliverTarget::Origin);
+        assert_eq!(parse_deliver_target("telegram:"), DeliverTarget::Origin);
     }
 
     #[test]

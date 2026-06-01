@@ -20,6 +20,8 @@ thiserror.workspace     = true
 tracing.workspace       = true
 uuid.workspace          = true
 chrono.workspace        = true
+chrono-tz.workspace     = true
+croner.workspace        = true
 
 # Vector memory — sqlite-vec extension (statically compiled in) + zerocopy for
 # &[f32] → blob serialization into the vec0 table. ADR 0008.

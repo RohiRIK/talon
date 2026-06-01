@@ -1,5 +1,6 @@
 pub mod cache;
 pub mod context;
+pub mod cron;
 pub mod decay;
 pub mod dedup;
 pub mod error;
@@ -15,6 +16,7 @@ pub mod working;
 
 pub use cache::{CacheStats, SemanticCache};
 pub use context::{BuiltContext, ContextBuilder};
+pub use cron::{CronJob, CronSchedule, CronStore, GrantedScope};
 pub use decay::{DecayEngine, decay_factor};
 pub use dedup::{DedupOutcome, Deduplicator, cosine_similarity};
 pub use error::MemoryError;

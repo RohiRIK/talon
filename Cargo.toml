@@ -26,6 +26,7 @@ rust-version = "1.88"
 # Async runtime
 tokio            = { version = "1",    features = ["full"] }
 tokio-stream     = "0.1"
+tokio-util       = { version = "0.7", features = ["rt"] }
 futures          = "0.3"
 
 # Serialization
@@ -72,8 +73,12 @@ tracing              = "0.1"
 tracing-subscriber   = { version = "0.3", features = ["env-filter"] }
 
 # Identifiers + time
-uuid    = { version = "1", features = ["v4"] }
-chrono  = { version = "0.4", features = ["serde"] }
+uuid       = { version = "1", features = ["v4"] }
+chrono     = { version = "0.4", features = ["serde"] }
+chrono-tz  = "0.10"
+
+# Cron parsing / next-occurrence (scheduler engine — SQLite is source of truth)
+croner     = "3"
 
 # Phase 4 — Gateway
 # Input editing is hand-rolled (crates/talon-gateway/src/tui/components/input.rs);

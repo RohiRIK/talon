@@ -25,6 +25,9 @@ pub enum MemoryError {
 
     #[error("llm error: {0}")]
     Llm(String),
+
+    #[error("cron schedule error: {0}")]
+    Cron(String),
 }
 
 #[cfg(test)]
