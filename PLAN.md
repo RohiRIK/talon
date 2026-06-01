@@ -623,7 +623,7 @@ cargo run --release -- --message "search Rust async news, summarize top 3"
 - [x] 6.8b `talon/src/cron_cli.rs` — `talon cron` tree-view CLI (SPEC §4.1 S6): `context_from`-nested DAG render + `enable`/`disable`/`rm`
 - [ ] 6.9 `examples/skills/hello/` — example skill compiling to `.wasm`
 - [ ] 6.10 Hot-reload test: drop `.wasm` → appears in tool list within 2s
-- [ ] 6.11 Cron test: `*/1 * * * *` job fires on the minute
+- [x] 6.11 Cron test: real `run()` tick-loop fires a due job on its own timer (live wall-clock test); minutely due-detection covered by `due_picks_up_minutely_cron_job` + `dispatch_runs_due_job_and_marks_run`
 
 ### Exit Gate
 ```bash

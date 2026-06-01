@@ -308,6 +308,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_loop_fires_a_due_job_on_its_own_timer() {
+        // 6.11 live-fire proof: the real `run()` tick loop (not a manual
+        // `dispatch_due` call) must pick up a job once it comes due and invoke
+        // the runner exactly once. We use a one-shot due ~1s out so the test is
+        // deterministic and fast; minutely *due-detection* is covered separately
+        // by `due_picks_up_minutely_cron_job` / `dispatch_runs_due_job`.
+        // (`next_run` is stored at whole-second precision, so the due instant
+        // must be a whole second in the future — sub-second offsets floor away.)
+        let store = store().await;
+        let soon = Utc::now().timestamp() + 1;
+        let job = store
+            .create(CronJob::new("soon", CronSchedule::Once(soon), "s"))
+            .await
+            .expect("create");
+
+        let (calls, runner) = counting();
+        let scheduler = Scheduler::new(store.clone(), runner).with_tick(Duration::from_millis(50));
+        let cancel = CancellationToken::new();
+        let tracker = TaskTracker::new();
+
+        let handle = {
+            let cancel = cancel.clone();
+            let tracker = tracker.clone();
+            tokio::spawn(async move { scheduler.run(cancel, tracker).await })
+        };
+
+        // Give the loop time to cross the due instant (~1s) and fire several ticks past it.
+        tokio::time::sleep(Duration::from_millis(1800)).await;
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), handle)
+            .await
+            .expect("loop did not exit on cancel")
+            .expect("join");
+        drain(tracker).await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "loop must fire the due job once"
+        );
+        let after = store.get(&job.id).await.expect("get").expect("present");
+        assert_eq!(after.run_count, 1);
+        assert!(
+            after.next_run.is_none(),
+            "one-shot clears next_run after firing"
+        );
+    }
+
+    #[tokio::test]
     async fn run_loop_exits_promptly_on_cancel() {
         let store = store().await;
         let (_calls, runner) = counting();
