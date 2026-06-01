@@ -11,7 +11,7 @@ pub mod timeout;
 pub mod timeouts;
 pub mod web;
 
-pub use cronjob::{CronJobTool, predict_scope};
+pub use cronjob::{CronJobTool, parse_schedule, predict_scope};
 pub use send_message::{ChannelSink, MessageSink, SendMessageTool};
 pub use session_search::SessionSearchTool;
 pub use subprocess_plugin::SubprocessPlugin;

@@ -14,6 +14,31 @@ use talon_memory::{CronJob, CronSchedule, CronStore, Database};
 
 #[derive(Subcommand)]
 pub enum CronAction {
+    /// Schedule a new job (capability scope is predicted from the prompt).
+    Create {
+        /// The instruction the agent runs each fire.
+        prompt: String,
+        /// A 5-field cron expr ("0 9 * * *") or a friendly form ("daily", "every 2h").
+        schedule: String,
+        /// Optional human label for the job.
+        #[arg(long)]
+        name: Option<String>,
+        /// Where output goes: origin / local / all / platform:chat_id:thread_id.
+        #[arg(long)]
+        deliver_to: Option<String>,
+        /// IANA timezone for the schedule (default: UTC).
+        #[arg(long)]
+        tz: Option<String>,
+        /// Number of times to run (omit for infinite, 1 for one-shot).
+        #[arg(long)]
+        repeat: Option<i64>,
+        /// Stable session id for LTM continuity (default: derived per job).
+        #[arg(long)]
+        session_id: Option<String>,
+        /// Upstream job ids whose last output is injected (repeatable).
+        #[arg(long = "context-from")]
+        context_from: Vec<String>,
+    },
     /// Render all scheduled jobs as a tree (default).
     List,
     /// Enable a job by id.
@@ -46,6 +71,54 @@ pub async fn run(action: CronAction) -> Result<()> {
 
 async fn run_with(store: &CronStore, action: CronAction) -> Result<()> {
     match action {
+        CronAction::Create {
+            prompt,
+            schedule,
+            name,
+            deliver_to,
+            tz,
+            repeat,
+            session_id,
+            context_from,
+        } => {
+            let mut job = CronJob::new(
+                prompt.clone(),
+                talon_tools::parse_schedule(&schedule),
+                String::new(),
+            );
+            job.session_id = session_id
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| format!("cron-{}", job.id));
+            if let Some(name) = name.filter(|s| !s.trim().is_empty()) {
+                job = job.with_name(name);
+            }
+            if let Some(target) = deliver_to.filter(|s| !s.trim().is_empty()) {
+                job = job.with_deliver_to(target);
+            }
+            if let Some(tz) = tz.filter(|s| !s.trim().is_empty()) {
+                job = job.with_tz(tz);
+            }
+            if let Some(repeat) = repeat {
+                job = job.with_repeat(Some(repeat));
+            }
+            if !context_from.is_empty() {
+                job = job.with_context_from(context_from);
+            }
+            job = job.with_granted_scope(talon_tools::predict_scope(&prompt));
+
+            let created = store
+                .create(job)
+                .await
+                .map_err(|e| anyhow::anyhow!("failed to create cron job: {e}"))?;
+            let next = created.next_run.as_deref().unwrap_or("(one-shot/none)");
+            println!(
+                "created {} ({})  next: {}  → {}",
+                created.name.as_deref().unwrap_or("(unnamed)"),
+                created.id,
+                next,
+                created.deliver_to,
+            );
+        }
         CronAction::List => {
             let jobs = store
                 .list()
@@ -306,6 +379,34 @@ mod tests {
     async fn list_runs_without_error_on_empty_store() {
         let store = store().await;
         run_with(&store, CronAction::List).await.expect("list ok");
+    }
+
+    #[tokio::test]
+    async fn create_persists_a_job_with_predicted_scope() {
+        let store = store().await;
+        run_with(
+            &store,
+            CronAction::Create {
+                prompt: "search the web for rust news and post to telegram".into(),
+                schedule: "0 9 * * *".into(),
+                name: Some("news".into()),
+                deliver_to: Some("telegram:me".into()),
+                tz: None,
+                repeat: None,
+                session_id: None,
+                context_from: vec![],
+            },
+        )
+        .await
+        .expect("create");
+
+        let jobs = store.list().await.expect("list");
+        assert_eq!(jobs.len(), 1);
+        let j = &jobs[0];
+        assert_eq!(j.name.as_deref(), Some("news"));
+        assert_eq!(j.deliver_to, "telegram:me");
+        assert!(j.granted_scope.tools.contains(&"web_search".to_string()));
+        assert!(j.next_run.is_some());
     }
 
     #[tokio::test]

@@ -230,7 +230,7 @@ async fn delete_job(store: &CronStore, args: &Value) -> ToolResult {
 /// Decide whether a schedule string is a raw cron expression or a friendly form.
 /// A cron expression is 5 or 6 whitespace fields built only from cron tokens
 /// (`0-9 * / , -`). Anything else is treated as `Human` and lowered downstream.
-fn parse_schedule(raw: &str) -> CronSchedule {
+pub fn parse_schedule(raw: &str) -> CronSchedule {
     let trimmed = raw.trim();
     let fields: Vec<&str> = trimmed.split_whitespace().collect();
     let is_cron = matches!(fields.len(), 5 | 6)
