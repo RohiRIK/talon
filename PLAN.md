@@ -621,8 +621,8 @@ cargo run --release -- --message "search Rust async news, summarize top 3"
 - [x] 6.8 `crates/talon-tools/src/cronjob.rs` — `CronJobTool` (NeedsApproval): create/list/delete cron jobs (+ §4.4 creation-time scope wizard `predict_scope` and runtime `granted_scope` enforcement via `effective_unattended_level`)
 - [x] 6.8a `talon/src/main.rs` — `talon serve` daemon: wires `Scheduler` + `TalonJobRunner` (concrete `JobRunner`) alongside a foreground gateway, graceful drain via `CancellationToken` + `TaskTracker`; unattended runs deny `ApprovalRequested`
 - [x] 6.8b `talon/src/cron_cli.rs` — `talon cron` tree-view CLI (SPEC §4.1 S6): `context_from`-nested DAG render + `enable`/`disable`/`rm`
-- [ ] 6.9 `examples/skills/hello/` — example skill compiling to `.wasm`
-- [ ] 6.10 Hot-reload test: drop `.wasm` → appears in tool list within 2s
+- [x] 6.9 `examples/skills/hello/` — example skill compiling to `.wasm` (reproducible `build.sh` pins the rustup toolchain; prebuilt `tests/fixtures/hello.wasm` committed so CI never compiles wasm)
+- [x] 6.10 Hot-reload test: drop `.wasm` → appears in tool list within 2s (`skill_e2e.rs`: load/run/log/tool/hot-reload); skills loaded into the binary at startup behind the `skills` feature
 - [x] 6.11 Cron test: real `run()` tick-loop fires a due job on its own timer (live wall-clock test); minutely due-detection covered by `due_picks_up_minutely_cron_job` + `dispatch_runs_due_job_and_marks_run`
 
 ### Exit Gate

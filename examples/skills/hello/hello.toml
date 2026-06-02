@@ -1,0 +1,14 @@
+# Host-trusted sidecar manifest for the hello skill. Deployed beside hello.wasm
+# in ~/.talon/skills/. The host (not the guest) authors this: it sets the danger
+# level and the capability allowlist the sandbox enforces.
+name = "hello"
+description = "Greet by name. Input: {\"name\": \"<who>\"}. Returns a greeting string."
+approval_level = "safe"
+capabilities = ["log"]
+
+[input_schema]
+type = "object"
+
+[input_schema.properties.name]
+type = "string"
+description = "Who to greet"

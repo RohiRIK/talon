@@ -1,0 +1,16 @@
+# Standalone crate, intentionally OUTSIDE the Talon workspace: it compiles to a
+# wasm32-wasip2 component, not a host binary. The empty [workspace] table stops
+# Cargo from treating it as a member of the parent workspace.
+[package]
+name = "hello-skill"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.46"
+
+[workspace]

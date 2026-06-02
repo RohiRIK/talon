@@ -20,6 +20,7 @@ talon-llm     = { path = "../crates/talon-llm", features = ["github-copilot-prov
 talon-memory  = { path = "../crates/talon-memory" }
 talon-gateway = { path = "../crates/talon-gateway" }
 talon-tools   = { path = "../crates/talon-tools" }
+talon-plugins = { path = "../crates/talon-plugins", optional = true }
 
 tokio.workspace              = true
 tokio-util.workspace         = true
@@ -35,6 +36,9 @@ chrono.workspace             = true
 [features]
 telegram = ["talon-gateway/telegram"]
 browser  = ["talon-tools/browser"]
+# WASM skills loaded from ~/.talon/skills/ at startup. Opt-in: pulls wasmtime
+# (15–22 MB). Default builds stay lean and skip the plugin host entirely.
+skills   = ["dep:talon-plugins", "talon-plugins/wasm"]
 
 [dev-dependencies]
 tempfile = "3"

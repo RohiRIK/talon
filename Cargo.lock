@@ -4981,6 +4981,7 @@ dependencies = [
  "talon-gateway",
  "talon-llm",
  "talon-memory",
+ "talon-plugins",
  "talon-tools",
  "tempfile",
  "tokio",

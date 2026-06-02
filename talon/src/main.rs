@@ -484,6 +484,26 @@ async fn build_gateway_context(provider_name: &str, api_key: String) -> Result<G
         }
     }
 
+    // Phase 6 WASM skills from ~/.talon/skills/ (opt-in `skills` feature). Each
+    // loaded skill is registered as a tool at startup. Live hot-reload into the
+    // running dispatcher is a follow-up; the SkillStore itself supports reload.
+    #[cfg(feature = "skills")]
+    if let Ok(skills_dir) = talon_home().map(|p| p.join("skills")) {
+        match talon_plugins::PluginHost::new() {
+            Ok(host) => {
+                let store = talon_plugins::SkillStore::new(Arc::new(host), skills_dir);
+                let tools = store.tools();
+                if !tools.is_empty() {
+                    tracing::info!("skills: loaded {} skill(s)", tools.len());
+                }
+                for tool in tools {
+                    ctx = ctx.with_tool(tool);
+                }
+            }
+            Err(e) => tracing::warn!("skills: plugin host init failed: {e}"),
+        }
+    }
+
     // Set up DB persistence and register memory tools.
     let db = talon_home()
         .ok()
