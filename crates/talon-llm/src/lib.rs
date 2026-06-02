@@ -10,6 +10,9 @@ pub use openai_compat::OpenAiCompatProvider;
 pub mod presets;
 pub use presets::ProviderPreset;
 
+mod fallback;
+pub use fallback::FallbackProvider;
+
 #[cfg(feature = "github-copilot-provider")]
 mod github_copilot;
 #[cfg(feature = "github-copilot-provider")]
