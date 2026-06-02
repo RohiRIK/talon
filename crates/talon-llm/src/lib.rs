@@ -13,6 +13,9 @@ pub use presets::ProviderPreset;
 mod fallback;
 pub use fallback::FallbackProvider;
 
+mod config;
+pub use config::{LlmConfig, ProviderChoice};
+
 #[cfg(feature = "github-copilot-provider")]
 mod github_copilot;
 #[cfg(feature = "github-copilot-provider")]
