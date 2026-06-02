@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde_json::json;
 use std::future::Future;
-use std::io::{self, Write as _};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -22,6 +21,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 mod cron_cli;
+mod wizard;
 
 // ── CLI definition ────────────────────────────────────────────────────────────
 
@@ -229,12 +229,24 @@ async fn cmd_init() -> Result<()> {
         println!("Wrote starter config to {}", config_path.display());
     }
 
-    let api_key = prompt_secret("Enter your Anthropic API key (sk-ant-...): ")?;
-    if !api_key.is_empty() {
-        store_api_key(&api_key).context("failed to store API key in OS keychain")?;
-        println!("API key stored securely in OS keychain.");
-    } else {
-        println!("Skipped API key storage — set TALON_API_KEY env var to override.");
+    match wizard::run_provider_wizard().await {
+        Ok(Some(cfg)) => {
+            let existing = std::fs::read_to_string(&config_path)
+                .unwrap_or_else(|_| default_config().to_string());
+            let merged = wizard::merge_llm_into_config(&existing, &cfg)?;
+            std::fs::write(&config_path, merged)
+                .with_context(|| format!("failed to write {}", config_path.display()))?;
+            println!("Saved provider chain to {}", config_path.display());
+        }
+        Ok(None) => {
+            println!("No providers selected — rerun `talon init` or set TALON_LLM_PROVIDER.");
+        }
+        Err(e) => {
+            // Non-interactive terminal (CI, piped stdin) or cancellation: fall
+            // back to the env-var path rather than failing init.
+            tracing::warn!("provider wizard skipped: {e}");
+            println!("Skipped interactive setup — set TALON_LLM_PROVIDER + TALON_LLM_API_KEY.");
+        }
     }
 
     println!("\nTalon initialized. Run: talon --message \"hello\"");
@@ -343,7 +355,7 @@ fn resolve_provider_and_key() -> Result<Option<(String, String)>> {
 
     let key = std::env::var("TALON_LLM_API_KEY")
         .ok()
-        .or_else(load_api_key)
+        .or_else(|| load_provider_key(&provider_name))
         .unwrap_or_default();
     if key.is_empty() {
         println!(
@@ -821,29 +833,22 @@ telegram_enabled = false
 "#
 }
 
-fn prompt_secret(prompt: &str) -> Result<String> {
-    print!("{}", prompt);
-    io::stdout().flush().context("failed to flush stdout")?;
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .context("failed to read input")?;
-    Ok(input.trim().to_string())
-}
 
-fn store_api_key(key: &str) -> Result<()> {
+/// Store a provider's API key in the OS keychain under `<provider>-api-key`.
+fn store_provider_key(provider: &str, key: &str) -> Result<()> {
     use keyring::Entry;
-    let entry =
-        Entry::new("talon", "anthropic-api-key").context("failed to create keyring entry")?;
+    let entry = Entry::new("talon", &format!("{provider}-api-key"))
+        .context("failed to create keyring entry")?;
     entry
         .set_password(key)
         .context("failed to store password")?;
     Ok(())
 }
 
-fn load_api_key() -> Option<String> {
+/// Load a provider's API key from the OS keychain, if present and non-empty.
+fn load_provider_key(provider: &str) -> Option<String> {
     use keyring::Entry;
-    Entry::new("talon", "anthropic-api-key")
+    Entry::new("talon", &format!("{provider}-api-key"))
         .ok()
         .and_then(|e| e.get_password().ok())
         .filter(|k| !k.is_empty())

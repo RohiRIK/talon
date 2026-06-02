@@ -32,6 +32,8 @@ keyring.workspace            = true
 serde_json.workspace         = true
 uuid.workspace               = true
 chrono.workspace             = true
+inquire.workspace            = true
+toml                         = "0.8"
 
 [features]
 telegram = ["talon-gateway/telegram"]
