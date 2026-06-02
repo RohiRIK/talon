@@ -402,20 +402,23 @@ fn build_provider_from_choice(choice: &ProviderChoice) -> Result<Arc<dyn LlmProv
     } else {
         String::new()
     };
-    let base_url = choice.base_url.as_deref().unwrap_or(preset.base_url);
-    let model = choice.model.as_deref().unwrap_or(preset.default_model);
 
     match preset.name {
-        "github-copilot" => Ok(Arc::new(
-            GitHubCopilotProvider::new()
-                .map_err(|e| anyhow::anyhow!("GitHub Copilot auth failed: {e}"))?,
-        )),
+        "github-copilot" => {
+            Ok(Arc::new(GitHubCopilotProvider::new().map_err(|e| {
+                anyhow::anyhow!("GitHub Copilot auth failed: {e}")
+            })?))
+        }
         "anthropic" => Ok(Arc::new(AnthropicProvider::new(key))),
-        _ if preset.openai_compatible => Ok(Arc::new(OpenAiCompatProvider::new(
-            base_url.to_string(),
-            key,
-            model.to_string(),
-        ))),
+        _ if preset.openai_compatible => {
+            let base_url = choice.base_url.as_deref().unwrap_or(preset.base_url);
+            let model = choice.model.as_deref().unwrap_or(preset.default_model);
+            Ok(Arc::new(OpenAiCompatProvider::new(
+                base_url.to_string(),
+                key,
+                model.to_string(),
+            )))
+        }
         other => anyhow::bail!("provider '{other}' is not supported in this build"),
     }
 }
@@ -423,10 +426,11 @@ fn build_provider_from_choice(choice: &ProviderChoice) -> Result<Arc<dyn LlmProv
 /// Construct a single provider from the legacy env path.
 fn build_single_provider(provider_name: &str, api_key: String) -> Result<Arc<dyn LlmProvider>> {
     match provider_name {
-        "github-copilot" | "copilot" => Ok(Arc::new(
-            GitHubCopilotProvider::new()
-                .map_err(|e| anyhow::anyhow!("GitHub Copilot auth failed: {e}"))?,
-        )),
+        "github-copilot" | "copilot" => {
+            Ok(Arc::new(GitHubCopilotProvider::new().map_err(|e| {
+                anyhow::anyhow!("GitHub Copilot auth failed: {e}")
+            })?))
+        }
         // "anthropic" and anything else defaults to Anthropic.
         _ => Ok(Arc::new(AnthropicProvider::new(api_key))),
     }
@@ -889,7 +893,6 @@ http_addr = "127.0.0.1:7777"
 telegram_enabled = false
 "#
 }
-
 
 /// Store a provider's API key in the OS keychain under `<provider>-api-key`.
 fn store_provider_key(provider: &str, key: &str) -> Result<()> {
