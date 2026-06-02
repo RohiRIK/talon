@@ -106,6 +106,36 @@ pub struct LlmResponse {
     pub stop_reason: String,
 }
 
+/// A model offered by a provider, as returned by its `/models` endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelInfo {
+    /// Provider-specific model id used in completion requests (e.g. `gpt-4o`).
+    pub id: String,
+    /// Human-friendly label for menus; falls back to `id` when absent upstream.
+    pub display_name: String,
+    /// Context window in tokens when the provider reports it.
+    pub context_window: Option<u32>,
+}
+
+impl ModelInfo {
+    pub fn new(id: impl Into<String>) -> Self {
+        let id = id.into();
+        Self {
+            display_name: id.clone(),
+            id,
+            context_window: None,
+        }
+    }
+}
+
+/// Live model discovery. Kept separate from [`LlmProvider`] so providers without
+/// a listing endpoint (or behind opaque auth) are not forced to implement it.
+pub trait ModelLister: Send + Sync {
+    fn list_models(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<ModelInfo>, LlmError>> + Send + '_>>;
+}
+
 #[derive(Debug, Error)]
 pub enum LlmError {
     #[error("network error: {0}")]
@@ -220,5 +250,19 @@ mod tests {
     fn llm_error_invalid_response_display() {
         let err = LlmError::InvalidResponse("bad json".to_string());
         assert!(err.to_string().contains("bad json"));
+    }
+
+    #[test]
+    fn model_info_new_defaults_display_name_to_id() {
+        let m = ModelInfo::new("gpt-4o");
+        assert_eq!(m.id, "gpt-4o");
+        assert_eq!(m.display_name, "gpt-4o");
+        assert_eq!(m.context_window, None);
+    }
+
+    #[test]
+    fn model_lister_is_object_safe() {
+        // Compile-time proof that ModelLister can be used as a trait object.
+        fn _assert(_: &dyn ModelLister) {}
     }
 }
