@@ -1,11 +1,110 @@
 /// Shared logic for OpenAI-compatible (chat/completions) APIs.
 ///
-/// Used by `OpenAIProvider` and `GitHubCopilotProvider`. Neither provider is
-/// wired to the other — this module is the only shared surface.
+/// Hosts [`OpenAiCompatProvider`] — a single provider parameterized by
+/// `base_url` that covers every OpenAI-compatible vendor (OpenAI, OpenRouter,
+/// NVIDIA, Hugging Face, Together, Groq, DeepSeek, …) — plus the request/response
+/// helpers reused by the key-less providers (`GitHubCopilotProvider`, etc.).
+use std::{future::Future, pin::Pin};
+
+use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::{ContentBlock, LlmError, LlmResponse, Message};
+use crate::{ContentBlock, LlmError, LlmProvider, LlmResponse, Message, ModelInfo, ModelLister};
+
+/// Generic provider for any OpenAI-compatible chat/completions endpoint.
+///
+/// `base_url` is the API root without a trailing slash (e.g.
+/// `https://openrouter.ai/api/v1`); requests hit `{base_url}/chat/completions`
+/// and `{base_url}/models`.
+pub struct OpenAiCompatProvider {
+    client: Client,
+    base_url: String,
+    api_key: String,
+    model: String,
+}
+
+impl OpenAiCompatProvider {
+    pub fn new(
+        base_url: impl Into<String>,
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+    ) -> Self {
+        Self {
+            client: Client::new(),
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+            api_key: api_key.into(),
+            model: model.into(),
+        }
+    }
+
+    async fn complete_inner(
+        &self,
+        messages: &[Message],
+        tools: &[serde_json::Value],
+    ) -> Result<LlmResponse, LlmError> {
+        let body = build_body(&self.model, messages, tools);
+        let resp = self
+            .client
+            .post(format!("{}/chat/completions", self.base_url))
+            .bearer_auth(&self.api_key)
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let resp = check_status(resp).await?;
+        let raw: RawResponse = resp
+            .json()
+            .await
+            .map_err(|e| LlmError::InvalidResponse(e.to_string()))?;
+        parse_response(raw)
+    }
+
+    async fn list_models_inner(&self) -> Result<Vec<ModelInfo>, LlmError> {
+        let resp = self
+            .client
+            .get(format!("{}/models", self.base_url))
+            .bearer_auth(&self.api_key)
+            .send()
+            .await?;
+        let resp = check_status(resp).await?;
+        let raw: RawModels = resp
+            .json()
+            .await
+            .map_err(|e| LlmError::InvalidResponse(e.to_string()))?;
+        Ok(parse_models(raw))
+    }
+}
+
+impl LlmProvider for OpenAiCompatProvider {
+    fn complete<'a>(
+        &'a self,
+        messages: &'a [Message],
+        tools: &'a [serde_json::Value],
+    ) -> Pin<Box<dyn Future<Output = Result<LlmResponse, LlmError>> + Send + 'a>> {
+        Box::pin(self.complete_inner(messages, tools))
+    }
+}
+
+impl ModelLister for OpenAiCompatProvider {
+    fn list_models(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<ModelInfo>, LlmError>> + Send + '_>> {
+        Box::pin(self.list_models_inner())
+    }
+}
+
+/// Map a deserialized `/models` payload to canonical [`ModelInfo`] entries.
+pub(crate) fn parse_models(raw: RawModels) -> Vec<ModelInfo> {
+    raw.data
+        .into_iter()
+        .map(|m| ModelInfo {
+            display_name: m.name.unwrap_or_else(|| m.id.clone()),
+            id: m.id,
+            context_window: m.context_length,
+        })
+        .collect()
+}
 
 /// Build the JSON body for a chat/completions request.
 /// Converts Anthropic-style `input_schema` tool definitions to OpenAI `function` format.
@@ -36,7 +135,6 @@ pub(crate) fn build_body(
 }
 
 /// Consume a response and return an error for non-2xx status codes.
-#[cfg_attr(not(feature = "github-copilot-provider"), allow(dead_code))]
 pub(crate) async fn check_status(resp: reqwest::Response) -> Result<reqwest::Response, LlmError> {
     let status = resp.status();
     if status.is_success() {
@@ -121,6 +219,22 @@ pub(crate) struct RawToolCall {
 pub(crate) struct RawFunction {
     pub(crate) name: String,
     pub(crate) arguments: String,
+}
+
+/// `/models` response — `{ "data": [ { "id", "name"?, "context_length"? }, … ] }`.
+/// Extra fields are ignored, so OpenAI / OpenRouter / NVIDIA / HF all deserialize.
+#[derive(Deserialize)]
+pub(crate) struct RawModels {
+    pub(crate) data: Vec<RawModel>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct RawModel {
+    pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) name: Option<String>,
+    #[serde(default)]
+    pub(crate) context_length: Option<u32>,
 }
 
 #[cfg(test)]
@@ -276,5 +390,48 @@ mod tests {
     fn parse_response_no_choices_is_error() {
         let raw = RawResponse { choices: vec![] };
         assert!(parse_response(raw).is_err());
+    }
+
+    #[test]
+    fn provider_trims_trailing_slash_from_base_url() {
+        let p = OpenAiCompatProvider::new("https://openrouter.ai/api/v1/", "k", "m");
+        assert_eq!(p.base_url, "https://openrouter.ai/api/v1");
+    }
+
+    #[test]
+    fn provider_is_both_llm_provider_and_model_lister() {
+        use std::sync::Arc;
+        let p = Arc::new(OpenAiCompatProvider::new("https://x/v1", "k", "gpt-4o"));
+        let _llm: Arc<dyn LlmProvider> = p.clone();
+        let _lister: Arc<dyn ModelLister> = p;
+    }
+
+    #[test]
+    fn parse_models_maps_data_entries() {
+        let raw: RawModels = serde_json::from_value(json!({
+            "data": [
+                { "id": "gpt-4o", "context_length": 128000 },
+                { "id": "anthropic/claude", "name": "Claude" }
+            ]
+        }))
+        .expect("deserialize");
+        let models = parse_models(raw);
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].id, "gpt-4o");
+        assert_eq!(models[0].display_name, "gpt-4o");
+        assert_eq!(models[0].context_window, Some(128000));
+        assert_eq!(models[1].display_name, "Claude");
+        assert_eq!(models[1].context_window, None);
+    }
+
+    #[test]
+    fn parse_models_ignores_unknown_fields() {
+        let raw: RawModels = serde_json::from_value(json!({
+            "object": "list",
+            "data": [ { "id": "m", "owned_by": "x", "created": 123 } ]
+        }))
+        .expect("deserialize");
+        let models = parse_models(raw);
+        assert_eq!(models[0].id, "m");
     }
 }
