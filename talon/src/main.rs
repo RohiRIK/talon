@@ -11,7 +11,10 @@ use talon_core::events::AgentEvent;
 use talon_core::scheduler::{JobOutcome, JobRunner, Scheduler};
 use talon_core::tools::{Tool, ToolContext, ToolResult};
 use talon_gateway::{Gateway, GatewayContext, cli::CliGateway, http::HttpGateway, tui::TuiGateway};
-use talon_llm::{AnthropicProvider, GitHubCopilotProvider, LlmProvider};
+use talon_llm::{
+    AnthropicProvider, FallbackProvider, GitHubCopilotProvider, LlmConfig, LlmProvider,
+    OpenAiCompatProvider, ProviderChoice,
+};
 use talon_memory::{CronJob, CronStore, Database, LtmStore, SqliteStore};
 use talon_tools::mcp::{McpClient, McpServersConfig, adapt_server};
 use talon_tools::web::WebConfig;
@@ -339,32 +342,94 @@ async fn cmd_doctor() -> Result<()> {
     Ok(())
 }
 
-/// Resolve the LLM provider name and (possibly empty) API key from env +
-/// keychain. Returns `Ok(None)` when a key is required but missing — the caller
-/// prints guidance and exits cleanly. Shared by `cmd_run` and `cmd_serve`.
-fn resolve_provider_and_key() -> Result<Option<(String, String)>> {
+/// Resolve the LLM provider to use. Prefers the `[llm]` chain in
+/// `~/.talon/config.toml` (written by `talon init`); a multi-entry chain
+/// becomes a [`FallbackProvider`]. With no config it falls back to the
+/// `TALON_LLM_PROVIDER`/`TALON_LLM_API_KEY` env path. Returns `Ok(None)` when a
+/// key is required but missing — the caller prints guidance and exits cleanly.
+/// Shared by `cmd_run` and `cmd_serve`.
+fn resolve_provider() -> Result<Option<Arc<dyn LlmProvider>>> {
+    let cfg = talon_home()
+        .map(|p| LlmConfig::load(&p.join("config.toml")))
+        .unwrap_or_default();
+
+    if !cfg.is_empty() {
+        let mut providers: Vec<Arc<dyn LlmProvider>> = Vec::with_capacity(cfg.chain.len());
+        for choice in &cfg.chain {
+            providers.push(build_provider_from_choice(choice)?);
+        }
+        let provider: Arc<dyn LlmProvider> = if providers.len() == 1 {
+            providers.remove(0)
+        } else {
+            Arc::new(FallbackProvider::new(providers))
+        };
+        return Ok(Some(provider));
+    }
+
+    // Legacy env path — no configured chain.
     let provider_name =
         std::env::var("TALON_LLM_PROVIDER").unwrap_or_else(|_| "anthropic".to_string());
-
-    // Key-less providers (github-copilot, claude-code) don't need TALON_LLM_API_KEY.
     let needs_api_key = matches!(provider_name.as_str(), "anthropic" | "openai");
 
-    if !needs_api_key {
-        return Ok(Some((provider_name, String::new())));
-    }
+    let key = if needs_api_key {
+        let k = std::env::var("TALON_LLM_API_KEY")
+            .ok()
+            .or_else(|| load_provider_key(&provider_name))
+            .unwrap_or_default();
+        if k.is_empty() {
+            println!(
+                "No provider configured. Run `talon init`, set TALON_LLM_API_KEY, \
+                 or use a key-less provider: TALON_LLM_PROVIDER=github-copilot"
+            );
+            return Ok(None);
+        }
+        k
+    } else {
+        String::new()
+    };
 
-    let key = std::env::var("TALON_LLM_API_KEY")
-        .ok()
-        .or_else(|| load_provider_key(&provider_name))
-        .unwrap_or_default();
-    if key.is_empty() {
-        println!(
-            "API key not configured. Run `talon init`, set TALON_LLM_API_KEY, \
-             or use a key-less provider: TALON_LLM_PROVIDER=github-copilot"
-        );
-        return Ok(None);
+    Ok(Some(build_single_provider(&provider_name, key)?))
+}
+
+/// Construct a provider for one chain entry, resolving its key from the
+/// keychain and honoring model/base_url overrides.
+fn build_provider_from_choice(choice: &ProviderChoice) -> Result<Arc<dyn LlmProvider>> {
+    let preset = talon_llm::presets::find(&choice.provider)
+        .with_context(|| format!("unknown provider '{}'", choice.provider))?;
+
+    let key = if preset.needs_api_key() {
+        load_provider_key(preset.name).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let base_url = choice.base_url.as_deref().unwrap_or(preset.base_url);
+    let model = choice.model.as_deref().unwrap_or(preset.default_model);
+
+    match preset.name {
+        "github-copilot" => Ok(Arc::new(
+            GitHubCopilotProvider::new()
+                .map_err(|e| anyhow::anyhow!("GitHub Copilot auth failed: {e}"))?,
+        )),
+        "anthropic" => Ok(Arc::new(AnthropicProvider::new(key))),
+        _ if preset.openai_compatible => Ok(Arc::new(OpenAiCompatProvider::new(
+            base_url.to_string(),
+            key,
+            model.to_string(),
+        ))),
+        other => anyhow::bail!("provider '{other}' is not supported in this build"),
     }
-    Ok(Some((provider_name, key)))
+}
+
+/// Construct a single provider from the legacy env path.
+fn build_single_provider(provider_name: &str, api_key: String) -> Result<Arc<dyn LlmProvider>> {
+    match provider_name {
+        "github-copilot" | "copilot" => Ok(Arc::new(
+            GitHubCopilotProvider::new()
+                .map_err(|e| anyhow::anyhow!("GitHub Copilot auth failed: {e}"))?,
+        )),
+        // "anthropic" and anything else defaults to Anthropic.
+        _ => Ok(Arc::new(AnthropicProvider::new(api_key))),
+    }
 }
 
 async fn cmd_run(
@@ -373,12 +438,12 @@ async fn cmd_run(
     gateway_flag: String,
     accessible: bool,
 ) -> Result<()> {
-    let (provider_name, api_key) = match resolve_provider_and_key()? {
-        Some(pair) => pair,
+    let provider = match resolve_provider()? {
+        Some(p) => p,
         None => return Ok(()),
     };
 
-    let ctx = build_gateway_context(&provider_name, api_key).await?;
+    let ctx = build_gateway_context(provider).await?;
     let ctx = Arc::new(ctx);
 
     // Single-turn mode: --message "..." skips the interactive REPL.
@@ -426,15 +491,7 @@ fn select_gateway(
     Ok(gateway)
 }
 
-async fn build_gateway_context(provider_name: &str, api_key: String) -> Result<GatewayContext> {
-    let provider: Arc<dyn LlmProvider> = match provider_name {
-        "github-copilot" | "copilot" => Arc::new(
-            GitHubCopilotProvider::new()
-                .map_err(|e| anyhow::anyhow!("GitHub Copilot auth failed: {e}"))?,
-        ),
-        // "anthropic" and anything else defaults to Anthropic.
-        _ => Arc::new(AnthropicProvider::new(api_key)),
-    };
+async fn build_gateway_context(provider: Arc<dyn LlmProvider>) -> Result<GatewayContext> {
     let mut ctx = GatewayContext::new(provider);
 
     // Register built-in tools.
@@ -681,12 +738,12 @@ async fn deliver(job_label: &str, deliver_to: &str, output: Option<&str>) {
 }
 
 async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
-    let (provider_name, api_key) = match resolve_provider_and_key()? {
-        Some(pair) => pair,
+    let provider = match resolve_provider()? {
+        Some(p) => p,
         None => return Ok(()),
     };
 
-    let ctx = Arc::new(build_gateway_context(&provider_name, api_key).await?);
+    let ctx = Arc::new(build_gateway_context(provider).await?);
 
     let db = ctx
         .db
