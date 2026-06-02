@@ -611,10 +611,10 @@ cargo run --release -- --message "search Rust async news, summarize top 3"
 > abstraction before committing to WASM ABI complexity.
 
 ### Tasks
-- [ ] 6.1 `crates/talon-plugins/src/lib.rs` — `PluginHost` using `wasmtime::Engine` + WASI preview2
-- [ ] 6.2 `crates/talon-plugins/src/skill.rs` — `Skill` struct: id, path, wasm_module, manifest (capabilities + approval_level)
+- [x] 6.1 `crates/talon-plugins/src/host.rs` — `PluginHost`: `wasmtime::Engine` + WASI preview2 + `talon:skill` component linker (WIT contract in `wit/world.wit`)
+- [x] 6.2 `crates/talon-plugins/src/manifest.rs` — `SkillManifest` (host-trusted sidecar `<name>.toml`): name, description, capabilities, approval_level, input_schema
 - [ ] 6.3 `crates/talon-plugins/src/store.rs` — `SkillStore`: load `.wasm` from `~/.talon/skills/`, hot-reload via `notify`
-- [ ] 6.4 `crates/talon-plugins/src/sandbox.rs` — capability gating: WASM only calls host functions declared in manifest
+- [x] 6.4 capability gating folded into `host.rs` `Host::log` — host fn traps if the manifest did not grant the capability
 - [ ] 6.5 Each skill becomes `Arc<dyn Tool>` adapter (replaces subprocess adapter from Phase 5 for compiled plugins)
 - [x] 6.6 `crates/talon-memory/src/cron.rs` — `CronStore` table: id, expr, prompt, last_run, next_run
 - [x] 6.7 `crates/talon-core/src/scheduler.rs` — `Scheduler`: tokio interval ticker, polls due jobs, invokes `Agent::run` (via `JobRunner` seam; `talon serve` wires the concrete runner)

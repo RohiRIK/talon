@@ -59,7 +59,12 @@ teloxide         = { version = "0.17", features = ["macros"] }
 clap             = { version = "4",    features = ["derive"] }
 
 # WASM plugin host (Phase 6, feature-flagged)
+# wasmtime + wasmtime-wasi release in lockstep — keep versions equal. The `wasm`
+# feature requires rustc ≥ 1.93 (wasmtime 45 MSRV); the rest of the workspace
+# keeps its 1.88 promise since these are pulled only under that opt-in feature.
 wasmtime         = "45"
+wasmtime-wasi    = "45"
+notify           = "8"
 
 # OS keychain
 keyring          = "3"

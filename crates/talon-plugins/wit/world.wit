@@ -1,0 +1,19 @@
+package talon:skill@0.1.0;
+
+/// Host capabilities a skill may import. Each function maps 1:1 to a capability
+/// name in the skill's sidecar manifest; the host traps any call whose
+/// capability the manifest did not grant (see `sandbox.rs`).
+interface host {
+    /// Append a line to the host log. Capability: `log`.
+    log: func(msg: string);
+}
+
+/// Every Talon skill implements this world: it may import host capabilities and
+/// must export `run`, which takes a JSON string and returns a JSON string (or a
+/// human-readable error). Metadata (name, schema, approval level) is NOT exported
+/// here — it lives in the host-trusted sidecar manifest so untrusted guest code
+/// can never assert its own approval level.
+world skill {
+    import host;
+    export run: func(input: string) -> result<string, string>;
+}
