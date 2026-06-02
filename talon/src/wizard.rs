@@ -1,17 +1,15 @@
 //! Interactive provider/model onboarding wizard (W6).
 //!
-//! Driven by `inquire` — an interactive terminal UI (arrow-key menus,
-//! multi-select, masked key entry). Flow: pick providers from the preset
-//! catalog → enter keys (stored in the OS keychain, never the config) →
-//! live-fetch models where the provider supports it → choose a default model
-//! per provider → order the fallback chain. The result is an [`LlmConfig`]
+//! Driven by `inquire` — an interactive terminal UI (arrow-key menus, masked
+//! key entry). Flow: pick the primary provider → enter its key (stored in the
+//! OS keychain, never the config) → live-fetch models where the provider
+//! supports it → choose a default model → then repeatedly offer to add a
+//! fallback provider, configured the same way. The result is an [`LlmConfig`]
 //! whose head is the primary provider and whose tail is the fallback order.
 
 use anyhow::{Context, Result};
-use inquire::{MultiSelect, Password, Select};
-use talon_llm::{
-    LlmConfig, ModelInfo, ModelLister, OpenAiCompatProvider, ProviderChoice, presets,
-};
+use inquire::{Confirm, Password, Select};
+use talon_llm::{LlmConfig, ModelInfo, ModelLister, OpenAiCompatProvider, ProviderChoice, presets};
 
 /// Build an [`LlmConfig`] from ordered `(provider, model)` picks. The first
 /// entry is the primary provider; the rest are the fallback order.
@@ -60,69 +58,90 @@ async fn fetch_models(preset: &presets::ProviderPreset, key: &str) -> Vec<ModelI
     }
 }
 
-/// Run the interactive wizard. Returns `None` when the user selects no
-/// providers. Stores entered API keys in the OS keychain as a side effect.
+/// Run the interactive wizard. Returns `None` when the user selects no primary
+/// provider. Stores entered API keys in the OS keychain as a side effect.
 pub async fn run_provider_wizard() -> Result<Option<LlmConfig>> {
     let all = presets::presets();
-    let labels: Vec<&str> = all.iter().map(|p| p.display_name).collect();
 
-    let chosen = MultiSelect::new("Select providers to configure:", labels)
-        .prompt()
-        .context("provider selection cancelled")?;
-    if chosen.is_empty() {
-        return Ok(None);
-    }
+    let primary = match select_provider(all, "Select your primary provider:", &[])? {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+    let mut selections: Vec<(String, String)> = vec![configure_provider(primary).await?];
 
-    let chosen_presets: Vec<&presets::ProviderPreset> = chosen
-        .iter()
-        .filter_map(|label| all.iter().find(|p| p.display_name == *label))
-        .collect();
-
-    let mut selections: Vec<(String, String)> = Vec::new();
-    for preset in &chosen_presets {
-        let key = if preset.needs_api_key() {
-            let entered = Password::new(&format!("API key for {}:", preset.display_name))
-                .without_confirmation()
-                .prompt()
-                .context("key entry cancelled")?;
-            if !entered.is_empty() {
-                crate::store_provider_key(preset.name, &entered)
-                    .with_context(|| format!("failed to store {} key", preset.name))?;
-            }
-            entered
-        } else {
-            String::new()
-        };
-
-        let models = fetch_models(preset, &key).await;
-        let model_ids: Vec<String> = models.into_iter().map(|m| m.id).collect();
-        let cursor = model_ids
-            .iter()
-            .position(|id| id == preset.default_model)
-            .unwrap_or(0);
-        let model = Select::new(
-            &format!("Default model for {}:", preset.display_name),
-            model_ids,
-        )
-        .with_starting_cursor(cursor)
-        .prompt()
-        .context("model selection cancelled")?;
-
-        selections.push((preset.name.to_string(), model));
-    }
-
-    if selections.len() > 1 {
-        let names: Vec<String> = selections.iter().map(|(n, _)| n.clone()).collect();
-        let primary = Select::new("Primary provider (the rest are fallbacks, in order):", names)
+    // Offer fallbacks one at a time, appended in the order added. Each is tried
+    // after the ones before it if they fail (see `FallbackProvider`).
+    loop {
+        let add = Confirm::new("Add a fallback provider?")
+            .with_default(false)
             .prompt()
-            .context("primary selection cancelled")?;
-        if let Some(pos) = selections.iter().position(|(n, _)| n == &primary) {
-            let head = selections.remove(pos);
-            selections.insert(0, head);
+            .context("fallback prompt cancelled")?;
+        if !add {
+            break;
+        }
+        let chosen: Vec<&str> = selections.iter().map(|(n, _)| n.as_str()).collect();
+        match select_provider(all, "Select a fallback provider:", &chosen)? {
+            Some(preset) => selections.push(configure_provider(preset).await?),
+            None => break,
         }
     }
 
     Ok(Some(build_chain(&selections)))
+}
+
+/// Prompt the user to pick one provider by display name, excluding any whose
+/// `name` is in `exclude`. Returns `None` when nothing is left to choose.
+fn select_provider<'a>(
+    all: &'a [presets::ProviderPreset],
+    prompt: &str,
+    exclude: &[&str],
+) -> Result<Option<&'a presets::ProviderPreset>> {
+    let options: Vec<&str> = all
+        .iter()
+        .filter(|p| !exclude.contains(&p.name))
+        .map(|p| p.display_name)
+        .collect();
+    if options.is_empty() {
+        return Ok(None);
+    }
+    let label = Select::new(prompt, options)
+        .prompt()
+        .context("provider selection cancelled")?;
+    Ok(all.iter().find(|p| p.display_name == label))
+}
+
+/// Configure one provider: enter its key (→ keychain), pick a default model.
+/// Returns `(provider name, model id)`.
+async fn configure_provider(preset: &presets::ProviderPreset) -> Result<(String, String)> {
+    let key = if preset.needs_api_key() {
+        let entered = Password::new(&format!("API key for {}:", preset.display_name))
+            .without_confirmation()
+            .prompt()
+            .context("key entry cancelled")?;
+        if !entered.is_empty() {
+            crate::store_provider_key(preset.name, &entered)
+                .with_context(|| format!("failed to store {} key", preset.name))?;
+        }
+        entered
+    } else {
+        String::new()
+    };
+
+    let models = fetch_models(preset, &key).await;
+    let model_ids: Vec<String> = models.into_iter().map(|m| m.id).collect();
+    let cursor = model_ids
+        .iter()
+        .position(|id| id == preset.default_model)
+        .unwrap_or(0);
+    let model = Select::new(
+        &format!("Default model for {}:", preset.display_name),
+        model_ids,
+    )
+    .with_starting_cursor(cursor)
+    .prompt()
+    .context("model selection cancelled")?;
+
+    Ok((preset.name.to_string(), model))
 }
 
 #[cfg(test)]
@@ -137,7 +156,10 @@ mod tests {
             ("groq".into(), "llama-3.3-70b-versatile".into()),
         ]);
         assert_eq!(cfg.chain.len(), 2);
-        assert_eq!(cfg.primary().map(|c| c.provider.as_str()), Some("openrouter"));
+        assert_eq!(
+            cfg.primary().map(|c| c.provider.as_str()),
+            Some("openrouter")
+        );
         assert_eq!(cfg.chain[0].model.as_deref(), Some("openai/gpt-4o"));
         assert_eq!(cfg.chain[1].provider, "groq");
     }

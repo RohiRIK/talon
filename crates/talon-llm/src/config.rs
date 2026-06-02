@@ -114,7 +114,10 @@ mod tests {
         "#;
         let cfg = LlmConfig::parse(toml);
         assert_eq!(cfg.chain.len(), 2);
-        assert_eq!(cfg.primary().map(|c| c.provider.as_str()), Some("github-copilot"));
+        assert_eq!(
+            cfg.primary().map(|c| c.provider.as_str()),
+            Some("github-copilot")
+        );
         assert_eq!(cfg.chain[1].model.as_deref(), Some("openai/gpt-4o"));
     }
 
