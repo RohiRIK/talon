@@ -38,9 +38,10 @@ This applies to: Talon's system prompt, tool `schema()` descriptions, `SessionSe
 
 ## Current State
 
-**Phase: 6 — In progress (scheduling half done; WASM plugins pending).** Phases 0–5 complete (Phase 5: 2026-05-29). `cargo nextest run --workspace` → 557/557 green.
+**Phase: 6 — Complete (2026-06-02).** Phases 0–5 complete (Phase 5: 2026-05-29). `cargo nextest run --workspace` → 566/566 green (3 skipped); talon-plugins wasm e2e (4 tests) green under `--features wasm`.
 Phase 5 added web_search/web_extract (Safe), SubprocessPlugin + MCP client/adapter/config (NeedsApproval), and a feature-gated BrowserTool, all registered in `build_gateway_context` with per-class timeouts. Deferred: 4.19 init wizard, 4.24 Telegram live smoke. **Pending verification:** Phase 5 live smoke test (real `web_search` + a real MCP server end-to-end) — code path wired, not yet exercised against the network.
-**Phase 6 scheduling subsystem built (2026-06-01):** `CronStore` (talon-memory) + self-rolled tokio `Scheduler` tick-loop (talon-core, `JobRunner` seam) + `talon serve` daemon wiring the concrete `TalonJobRunner` with graceful drain + `CronJobTool` with §4.4 creation-time scope wizard (`predict_scope`) and runtime `granted_scope` enforcement (`effective_unattended_level`: out-of-scope NeedsApproval → Dangerous → denied unattended; Dangerous never auto-granted) + `talon cron` tree-view CLI. Engine locked: SQLite CronStore SSoT + `croner` parser + tokio tick-loop (NOT tokio-cron-scheduler). **Pending:** 6.11 live "fires on the minute" cron smoke; WASM plugin half (6.1–6.5, 6.9–6.10) is the remainder of the Phase 6 exit gate. See `PLAN.md`.
+**Phase 6 scheduling subsystem built (2026-06-01):** `CronStore` (talon-memory) + self-rolled tokio `Scheduler` tick-loop (talon-core, `JobRunner` seam) + `talon serve` daemon wiring the concrete `TalonJobRunner` with graceful drain + `CronJobTool` with §4.4 creation-time scope wizard (`predict_scope`) and runtime `granted_scope` enforcement (`effective_unattended_level`: out-of-scope NeedsApproval → Dangerous → denied unattended; Dangerous never auto-granted) + `talon cron` tree-view CLI. Engine locked: SQLite CronStore SSoT + `croner` parser + tokio tick-loop (NOT tokio-cron-scheduler).
+**Phase 6 WASM plugin half complete (2026-06-02):** `PluginHost` (wasmtime Engine + WASI p2 + `talon:skill` component linker) + host-trusted sidecar `SkillManifest` + `SkillStore` (hot-reload via `notify` full re-scan) + capability gating (host `log` traps if manifest didn't grant it) + `SkillTool` adapter (`Arc<dyn Tool>`, `run` on `spawn_blocking`). `examples/skills/hello` builds to wasm32-wasip2 via `build.sh` (pins rustup toolchain — Homebrew rustc 1.95 lacks wasm std); prebuilt `tests/fixtures/hello.wasm` committed so CI never compiles wasm. `skill_e2e.rs` proves load/run/log/tool + hot-reload <2s. Skills loaded into the binary at startup behind the opt-in `skills` feature (`= talon-plugins/wasm`); default builds stay lean (no wasmtime). **Pending:** live CLI smoke (`cargo run -- --message "use hello skill"`). See `PLAN.md`.
 
 ---
 
@@ -224,7 +225,7 @@ docker build -t talon:phase-N .
 | 3 | Tools Tier 1 | ✅ Complete (2026-05-28) | 275 tests green; fs tools + Docker/native sandbox + TimeoutWrapper |
 | 4 | Gateway | ✅ Complete (2026-05-28) | CLI + Telegram + HTTP all functional; 349 tests green |
 | 5 | Tools Tier 2 + MCP | ✅ Complete (2026-05-29) | Tools built + registered; live smoke (real search/MCP) pending |
-| 6 | Plugins + Scheduling | ⬜ v1.1 | WASM plugin loads without restart |
+| 6 | Plugins + Scheduling | ✅ Complete (2026-06-02) | WASM plugin loads without restart (hot-reload <2s proven in `skill_e2e.rs`); live CLI smoke pending |
 | 7 | Advanced | ⬜ v2 | Parallel subagents, skill evolution |
 
 **MVP:** Phases 0–2 + 4. Agent that talks, remembers, reachable via Telegram.
