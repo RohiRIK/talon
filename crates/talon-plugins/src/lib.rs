@@ -18,7 +18,13 @@ pub mod host;
 pub mod store;
 
 #[cfg(feature = "wasm")]
+pub mod tool;
+
+#[cfg(feature = "wasm")]
 pub use host::PluginHost;
 
 #[cfg(feature = "wasm")]
 pub use store::SkillStore;
+
+#[cfg(feature = "wasm")]
+pub use tool::SkillTool;

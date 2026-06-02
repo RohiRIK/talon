@@ -109,6 +109,25 @@ impl SkillStore {
         self.host
             .run(&skill.component, skill.manifest.capabilities.clone(), input)
     }
+
+    /// Snapshot the loaded skills as [`Arc<dyn Tool>`] for the agent registry.
+    /// Take a fresh snapshot after a hot-reload to pick up new skills.
+    pub fn tools(&self) -> Vec<Arc<dyn talon_core::tools::Tool>> {
+        self.skills
+            .read()
+            .map(|m| {
+                m.values()
+                    .map(|s| {
+                        Arc::new(crate::tool::SkillTool::new(
+                            self.host.clone(),
+                            s.component.clone(),
+                            s.manifest.clone(),
+                        )) as Arc<dyn talon_core::tools::Tool>
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
 }
 
 /// Scan `dir` for `<name>.wasm` + `<name>.toml` pairs, compiling and parsing

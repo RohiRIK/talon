@@ -615,7 +615,7 @@ cargo run --release -- --message "search Rust async news, summarize top 3"
 - [x] 6.2 `crates/talon-plugins/src/manifest.rs` — `SkillManifest` (host-trusted sidecar `<name>.toml`): name, description, capabilities, approval_level, input_schema
 - [x] 6.3 `crates/talon-plugins/src/store.rs` — `SkillStore`: load `.wasm` + sidecar `.toml` from `~/.talon/skills/`, hot-reload via `notify` (full re-scan on change)
 - [x] 6.4 capability gating folded into `host.rs` `Host::log` — host fn traps if the manifest did not grant the capability
-- [ ] 6.5 Each skill becomes `Arc<dyn Tool>` adapter (replaces subprocess adapter from Phase 5 for compiled plugins)
+- [x] 6.5 `crates/talon-plugins/src/tool.rs` — `SkillTool` adapter: each skill becomes `Arc<dyn Tool>` (manifest-sourced approval, `run` on `spawn_blocking`); `SkillStore::tools()` snapshots the registry
 - [x] 6.6 `crates/talon-memory/src/cron.rs` — `CronStore` table: id, expr, prompt, last_run, next_run
 - [x] 6.7 `crates/talon-core/src/scheduler.rs` — `Scheduler`: tokio interval ticker, polls due jobs, invokes `Agent::run` (via `JobRunner` seam; `talon serve` wires the concrete runner)
 - [x] 6.8 `crates/talon-tools/src/cronjob.rs` — `CronJobTool` (NeedsApproval): create/list/delete cron jobs (+ §4.4 creation-time scope wizard `predict_scope` and runtime `granted_scope` enforcement via `effective_unattended_level`)
