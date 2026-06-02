@@ -169,4 +169,45 @@ db_path = "talon.db"
         let merged = merge_llm_into_config("", &cfg).expect("merge");
         assert_eq!(LlmConfig::parse(&merged), cfg);
     }
+
+    // ── fetch_models degradation (no network) ──────────────────────────────
+
+    #[tokio::test]
+    async fn fetch_models_uses_builtin_for_keyless_provider() {
+        // github-copilot is not openai_compatible and ships a built-in list —
+        // no network call regardless of key.
+        let preset = presets::find("github-copilot").expect("preset");
+        let ids: Vec<String> = fetch_models(preset, "")
+            .await
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert!(ids.contains(&"claude-sonnet-4.6".to_string()));
+    }
+
+    #[tokio::test]
+    async fn fetch_models_falls_back_to_default_when_no_builtin() {
+        // anthropic isn't openai_compatible and has no built-in list → the
+        // single default model, no network.
+        let preset = presets::find("anthropic").expect("preset");
+        let ids: Vec<String> = fetch_models(preset, "")
+            .await
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert_eq!(ids, vec![preset.default_model.to_string()]);
+    }
+
+    #[tokio::test]
+    async fn fetch_models_skips_live_fetch_when_key_empty() {
+        // openrouter is openai_compatible but with an empty key the live fetch
+        // is skipped (guarded), so it degrades to the default model offline.
+        let preset = presets::find("openrouter").expect("preset");
+        let ids: Vec<String> = fetch_models(preset, "")
+            .await
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert_eq!(ids, vec![preset.default_model.to_string()]);
+    }
 }

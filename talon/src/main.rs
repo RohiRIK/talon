@@ -1207,6 +1207,28 @@ mod tests {
         assert!(default_config().contains("provider = \"anthropic\""));
     }
 
+    // ── provider chain construction (W7) ──────────────────────────────────────
+
+    #[test]
+    fn build_provider_from_choice_rejects_unknown() {
+        let choice = ProviderChoice::new("not-a-real-provider");
+        assert!(build_provider_from_choice(&choice).is_err());
+    }
+
+    #[test]
+    fn build_provider_from_choice_builds_anthropic() {
+        // AnthropicProvider::new does no network/auth — construction must succeed.
+        let choice = ProviderChoice::new("anthropic");
+        assert!(build_provider_from_choice(&choice).is_ok());
+    }
+
+    #[test]
+    fn build_provider_from_choice_builds_openai_compatible() {
+        // OpenAiCompatProvider::new only builds an HTTP client — no network.
+        let choice = ProviderChoice::new("openrouter");
+        assert!(build_provider_from_choice(&choice).is_ok());
+    }
+
     // ── stub command handlers ─────────────────────────────────────────────────
 
     #[tokio::test]
