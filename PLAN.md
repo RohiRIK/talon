@@ -613,7 +613,7 @@ cargo run --release -- --message "search Rust async news, summarize top 3"
 ### Tasks
 - [x] 6.1 `crates/talon-plugins/src/host.rs` — `PluginHost`: `wasmtime::Engine` + WASI preview2 + `talon:skill` component linker (WIT contract in `wit/world.wit`)
 - [x] 6.2 `crates/talon-plugins/src/manifest.rs` — `SkillManifest` (host-trusted sidecar `<name>.toml`): name, description, capabilities, approval_level, input_schema
-- [ ] 6.3 `crates/talon-plugins/src/store.rs` — `SkillStore`: load `.wasm` from `~/.talon/skills/`, hot-reload via `notify`
+- [x] 6.3 `crates/talon-plugins/src/store.rs` — `SkillStore`: load `.wasm` + sidecar `.toml` from `~/.talon/skills/`, hot-reload via `notify` (full re-scan on change)
 - [x] 6.4 capability gating folded into `host.rs` `Host::log` — host fn traps if the manifest did not grant the capability
 - [ ] 6.5 Each skill becomes `Arc<dyn Tool>` adapter (replaces subprocess adapter from Phase 5 for compiled plugins)
 - [x] 6.6 `crates/talon-memory/src/cron.rs` — `CronStore` table: id, expr, prompt, last_run, next_run

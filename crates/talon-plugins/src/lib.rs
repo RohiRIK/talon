@@ -15,4 +15,10 @@ pub mod manifest;
 pub mod host;
 
 #[cfg(feature = "wasm")]
+pub mod store;
+
+#[cfg(feature = "wasm")]
 pub use host::PluginHost;
+
+#[cfg(feature = "wasm")]
+pub use store::SkillStore;
