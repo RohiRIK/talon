@@ -20,6 +20,7 @@ talon-llm     = { path = "../crates/talon-llm", features = ["github-copilot-prov
 talon-memory  = { path = "../crates/talon-memory" }
 talon-gateway = { path = "../crates/talon-gateway" }
 talon-tools   = { path = "../crates/talon-tools" }
+talon-secrets = { path = "../crates/talon-secrets" }
 talon-plugins = { path = "../crates/talon-plugins", optional = true }
 
 tokio.workspace              = true
@@ -41,6 +42,9 @@ browser  = ["talon-tools/browser"]
 # WASM skills loaded from ~/.talon/skills/ at startup. Opt-in: pulls wasmtime
 # (15–22 MB). Default builds stay lean and skip the plugin host entirely.
 skills   = ["dep:talon-plugins", "talon-plugins/wasm"]
+# Web console SPA embedded into the binary (committed web/dist via rust-embed
+# in talon-gateway), served by `talon serve` at /ui. Default builds stay lean.
+web-ui   = ["talon-gateway/web-ui"]
 
 [dev-dependencies]
 tempfile = "3"

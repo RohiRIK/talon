@@ -8,22 +8,24 @@ use std::sync::Arc;
 use std::time::Duration;
 use talon_core::approval::ApprovalLevel;
 use talon_core::events::AgentEvent;
-use talon_core::scheduler::{JobOutcome, JobRunner, Scheduler};
+use talon_core::scheduler::{JobOutcome, JobRunner, RunEvent, Scheduler};
 use talon_core::tools::{Tool, ToolContext, ToolResult};
+use talon_gateway::web::{ApprovalBroker, EVENT_CHANNEL_CAP, PendingApproval, WebState};
 use talon_gateway::{Gateway, GatewayContext, cli::CliGateway, http::HttpGateway, tui::TuiGateway};
 use talon_llm::{
     AnthropicProvider, FallbackProvider, GitHubCopilotProvider, LlmConfig, LlmProvider,
     OpenAiCompatProvider, ProviderChoice,
 };
-use talon_memory::{CronJob, CronStore, Database, LtmStore, SqliteStore};
+use talon_memory::{CronJob, CronStore, Database, LtmStore, RunStore, SqliteStore};
 use talon_tools::mcp::{McpClient, McpServersConfig, adapt_server};
 use talon_tools::web::WebConfig;
 use talon_tools::{CronJobTool, SessionSearchTool, WebExtractTool, WebSearchTool, timeouts};
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 mod cron_cli;
+mod secret_cli;
 mod wizard;
 
 // ── CLI definition ────────────────────────────────────────────────────────────
@@ -92,6 +94,11 @@ enum Commands {
     Cron {
         #[command(subcommand)]
         action: cron_cli::CronAction,
+    },
+    /// Manage the builtin encrypted secret vault.
+    Secret {
+        #[command(subcommand)]
+        action: secret_cli::SecretAction,
     },
 }
 
@@ -209,6 +216,7 @@ async fn main() -> Result<()> {
         Some(Commands::Doctor) => cmd_doctor().await,
         Some(Commands::Serve { gateway }) => cmd_serve(gateway, cli.accessible).await,
         Some(Commands::Cron { action }) => cron_cli::run(action).await,
+        Some(Commands::Secret { action }) => secret_cli::run(action, talon_home()?).await,
         None => cmd_run(cli.message, cli.config, cli.gateway, cli.accessible).await,
     }
 }
@@ -230,6 +238,24 @@ async fn cmd_init() -> Result<()> {
         std::fs::write(&config_path, default_config())
             .with_context(|| format!("failed to write {}", config_path.display()))?;
         println!("Wrote starter config to {}", config_path.display());
+    }
+
+    // Web console token: generate once, preserve forever (fail-closed API
+    // means no token = no /api/v1, so first-run must not leave it blank).
+    match ensure_api_token(&config_path) {
+        Ok(true) => println!(
+            "Generated [gateway] api_token — the web console (localhost-only by default) \
+             requires it as a Bearer token."
+        ),
+        Ok(false) => {}
+        Err(e) => tracing::warn!("could not ensure [gateway] api_token: {e}"),
+    }
+
+    // Vault master key — credential first, then keygen (criterion 1).
+    // Failure here must not abort provider setup.
+    if let Err(e) = secret_cli::init_vault_bootstrap(&talon_dir) {
+        tracing::warn!("vault bootstrap failed: {e}");
+        println!("Vault setup failed ({e}) — rerun `talon init` after fixing the issue.");
     }
 
     match wizard::run_provider_wizard().await {
@@ -254,6 +280,37 @@ async fn cmd_init() -> Result<()> {
 
     println!("\nTalon initialized. Run: talon --message \"hello\"");
     Ok(())
+}
+
+/// Insert a generated `[gateway] api_token` into the config if absent.
+/// Returns `true` when a new token was written; an existing token is never
+/// touched. The token is random (UUIDv4, no dashes) — not derived from
+/// anything on the machine.
+fn ensure_api_token(config_path: &std::path::Path) -> Result<bool> {
+    let existing = std::fs::read_to_string(config_path)
+        .with_context(|| format!("failed to read {}", config_path.display()))?;
+    let mut doc: toml::Table = toml::from_str(&existing).context("config.toml is not valid TOML")?;
+
+    let gateway = doc
+        .entry("gateway")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let table = gateway
+        .as_table_mut()
+        .context("[gateway] is not a table in config.toml")?;
+    let has_token = table
+        .get("api_token")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.trim().is_empty());
+    if has_token {
+        return Ok(false);
+    }
+
+    let token = format!("talon_{}", uuid::Uuid::new_v4().simple());
+    table.insert("api_token".to_string(), toml::Value::String(token));
+    let merged = toml::to_string_pretty(&doc).context("serialize merged config")?;
+    std::fs::write(config_path, merged)
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+    Ok(true)
 }
 
 async fn cmd_db(action: DbAction) -> Result<()> {
@@ -460,21 +517,59 @@ async fn cmd_run(
     }
 
     // Multi-turn mode: choose gateway based on --gateway flag.
-    let gateway = select_gateway(&gateway_flag, &ctx, accessible)?;
+    let gateway = select_gateway(&gateway_flag, &ctx, accessible, None)?;
     gateway.run().await.map_err(|e| anyhow::anyhow!("{e}"))
 }
 
+/// `[gateway]` settings from `~/.talon/config.toml` that the daemon needs.
+struct GatewayConfig {
+    http_addr: String,
+    api_token: Option<String>,
+}
+
+/// Read `[gateway] http_addr` / `api_token` from the config file. Missing
+/// file, section, or keys are all normal — defaults apply (and no token means
+/// the web console fail-closes to "not mounted").
+fn load_gateway_config() -> GatewayConfig {
+    let table = talon_home()
+        .ok()
+        .map(|p| p.join("config.toml"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|raw| toml::from_str::<toml::Table>(&raw).ok());
+    let gateway = table.as_ref().and_then(|t| t.get("gateway"));
+    let get_str = |key: &str| -> Option<String> {
+        gateway
+            .and_then(|g| g.get(key))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .filter(|s| !s.trim().is_empty())
+    };
+    GatewayConfig {
+        http_addr: get_str("http_addr").unwrap_or_else(|| "127.0.0.1:7777".to_string()),
+        api_token: get_str("api_token"),
+    }
+}
+
 /// Build the foreground gateway selected by `--gateway`. "cli" and any unknown
-/// value fall back to CLI. Shared by `cmd_run` and `cmd_serve`.
+/// value fall back to CLI. Shared by `cmd_run` and `cmd_serve`. `web` mounts
+/// the console API on the HTTP gateway (only `cmd_serve` passes it).
 fn select_gateway(
     gateway_flag: &str,
     ctx: &Arc<GatewayContext>,
     accessible: bool,
+    web: Option<WebState>,
 ) -> Result<Arc<dyn Gateway>> {
     let gateway: Arc<dyn Gateway> = match gateway_flag {
         "http" => {
-            let addr = "127.0.0.1:7777".parse().context("invalid HTTP addr")?;
-            Arc::new(HttpGateway::new(Arc::clone(ctx), addr))
+            let addr = load_gateway_config()
+                .http_addr
+                .parse()
+                .context("invalid [gateway] http_addr")?;
+            let mut gw = HttpGateway::new(Arc::clone(ctx), addr);
+            if let Some(web) = web {
+                gw = gw.with_web(web);
+            }
+            Arc::new(gw)
         }
         "tui" => Arc::new(TuiGateway::new(Arc::clone(ctx), accessible, "talon")),
         #[cfg(feature = "telegram")]
@@ -656,11 +751,21 @@ fn parse_deliver_target(s: &str) -> DeliverTarget {
 /// only safe default is to refuse escalation.
 struct TalonJobRunner {
     ctx: Arc<GatewayContext>,
+    /// Web console approval path (§4.4 A). `None` → immediate deny, as before.
+    approvals: Option<ApprovalBroker>,
+    /// Web console live feed; approval escalations are announced here.
+    events: Option<broadcast::Sender<RunEvent>>,
 }
+
+/// How long an out-of-scope escalation waits for a ✅/❌ from the console
+/// before it is denied ("skipped: out of granted scope").
+const APPROVAL_TIMEOUT_SECS: u64 = 120;
 
 impl JobRunner for TalonJobRunner {
     fn run(&self, job: CronJob) -> Pin<Box<dyn Future<Output = JobOutcome> + Send + '_>> {
         let ctx = Arc::clone(&self.ctx);
+        let approvals = self.approvals.clone();
+        let events = self.events.clone();
         Box::pin(async move {
             let (tx, mut rx) = mpsc::channel::<AgentEvent>(64);
             // Run unattended under the job's pre-authorized scope: out-of-scope
@@ -672,6 +777,7 @@ impl JobRunner for TalonJobRunner {
             let session_id = job.session_id.clone();
             let prompt = job.prompt.clone();
             let deliver_to = job.deliver_to.clone();
+            let job_id = job.id.clone();
             let job_label = job.name.clone().unwrap_or_else(|| job.id.clone());
 
             // Drive the agent on its own task so we can drain events concurrently;
@@ -685,6 +791,7 @@ impl JobRunner for TalonJobRunner {
 
             let mut output = String::new();
             let mut succeeded = false;
+            let mut error: Option<String> = None;
             while let Some(event) = rx.recv().await {
                 match event {
                     AgentEvent::Text { content } => {
@@ -693,18 +800,73 @@ impl JobRunner for TalonJobRunner {
                         }
                         output.push_str(&content);
                     }
-                    AgentEvent::ApprovalRequested { tx, tool_name, .. } => {
-                        tracing::warn!(
-                            job = %job_label,
-                            tool = %tool_name,
-                            "scheduled job requested tool approval — denying (unattended)"
-                        );
-                        let _ = tx.send(false);
-                    }
+                    AgentEvent::ApprovalRequested {
+                        call_id,
+                        tool_name,
+                        args,
+                        tx,
+                        ..
+                    } => match &approvals {
+                        // Web console attached: park the approval (§4.4 A) —
+                        // resolved by POST /approvals/{call_id} or denied on
+                        // timeout. The run blocks on its own task meanwhile.
+                        Some(broker) => {
+                            tracing::warn!(
+                                job = %job_label,
+                                tool = %tool_name,
+                                call_id = %call_id,
+                                "out-of-scope tool call — escalating to web console"
+                            );
+                            broker.register(
+                                PendingApproval::new(
+                                    call_id.clone(),
+                                    Some(job_id.clone()),
+                                    tool_name.clone(),
+                                    args.clone(),
+                                ),
+                                tx,
+                            );
+                            if let Some(ev) = &events {
+                                let _ = ev.send(RunEvent::ApprovalPending {
+                                    call_id: call_id.clone(),
+                                    job_id: Some(job_id.clone()),
+                                    tool: tool_name,
+                                    args,
+                                });
+                            }
+                            let broker = broker.clone();
+                            let ev = events.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep(Duration::from_secs(APPROVAL_TIMEOUT_SECS))
+                                    .await;
+                                if broker.deny_if_pending(&call_id) {
+                                    tracing::warn!(
+                                        call_id = %call_id,
+                                        "approval timed out — denied (out of granted scope)"
+                                    );
+                                    if let Some(ev) = ev {
+                                        let _ = ev.send(RunEvent::ApprovalResolved {
+                                            call_id,
+                                            approved: false,
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                        None => {
+                            tracing::warn!(
+                                job = %job_label,
+                                tool = %tool_name,
+                                "scheduled job requested tool approval — denying (unattended)"
+                            );
+                            let _ = tx.send(false);
+                        }
+                    },
                     AgentEvent::Completed => succeeded = true,
                     AgentEvent::Failed(msg) => {
                         tracing::error!(job = %job_label, error = %msg, "scheduled job failed");
                         succeeded = false;
+                        error = Some(msg);
                     }
                     _ => {}
                 }
@@ -714,6 +876,7 @@ impl JobRunner for TalonJobRunner {
             if let Ok(Err(e)) = handle.await {
                 tracing::error!(job = %job_label, error = %e, "agent run errored");
                 succeeded = false;
+                error = Some(e);
             }
 
             let final_output = (!output.is_empty()).then_some(output.clone());
@@ -722,7 +885,10 @@ impl JobRunner for TalonJobRunner {
             if succeeded {
                 JobOutcome::ok(final_output)
             } else {
-                JobOutcome::failed()
+                match error {
+                    Some(e) => JobOutcome::failed_with(e),
+                    None => JobOutcome::failed(),
+                }
             }
         })
     }
@@ -753,7 +919,8 @@ async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
         .db
         .clone()
         .context("serve requires a database — none was opened")?;
-    let store = CronStore::new(db);
+    let store = CronStore::new(Arc::clone(&db));
+    let run_store = RunStore::new(db);
 
     let tick_secs = std::env::var("TALON_SCHEDULER_TICK_SECS")
         .ok()
@@ -761,10 +928,44 @@ async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
         .filter(|n| *n > 0)
         .unwrap_or(DEFAULT_SCHEDULER_TICK_SECS);
 
+    // Web console plumbing: live event feed + approval broker. The console
+    // itself only mounts when [gateway] api_token is configured (fail closed).
+    let gateway_cfg = load_gateway_config();
+    let (event_tx, _) = broadcast::channel::<RunEvent>(EVENT_CHANNEL_CAP);
+    let approvals = ApprovalBroker::new();
+
     let runner = Arc::new(TalonJobRunner {
         ctx: Arc::clone(&ctx),
+        approvals: gateway_cfg.api_token.is_some().then(|| approvals.clone()),
+        events: Some(event_tx.clone()),
     });
-    let scheduler = Scheduler::new(store, runner).with_tick(Duration::from_secs(tick_secs));
+    let scheduler = Scheduler::new(store.clone(), runner)
+        .with_tick(Duration::from_secs(tick_secs))
+        .with_run_store(run_store.clone())
+        .with_events(event_tx.clone());
+    let sched_handle = scheduler.handle();
+
+    let web_state = match &gateway_cfg.api_token {
+        Some(token) => Some(
+            WebState::new(
+                Arc::clone(&ctx),
+                store,
+                run_store,
+                sched_handle,
+                event_tx,
+                approvals,
+                token,
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        ),
+        None => {
+            tracing::warn!(
+                "no [gateway] api_token in config.toml — web console API not mounted \
+                 (run `talon init` to generate one)"
+            );
+            None
+        }
+    };
 
     let cancel = CancellationToken::new();
     let tracker = TaskTracker::new();
@@ -777,9 +978,32 @@ async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
     };
 
     // Foreground gateway — aborted on shutdown; the scheduler is what we drain.
-    let gateway = select_gateway(&gateway_flag, &ctx, accessible)?;
+    // The web console rides the HTTP gateway: foreground when --gateway http,
+    // otherwise as an extra background server so `talon serve` always exposes it.
+    let (foreground_web, background_web) = if gateway_flag == "http" {
+        (web_state, None)
+    } else {
+        (None, web_state)
+    };
+    let gateway = select_gateway(&gateway_flag, &ctx, accessible, foreground_web)?;
     let gateway_handle =
         tokio::spawn(async move { gateway.run().await.map_err(|e| e.to_string()) });
+
+    let _web_handle = background_web.map(|web| {
+        let addr = gateway_cfg.http_addr.clone();
+        let ctx = Arc::clone(&ctx);
+        tokio::spawn(async move {
+            match addr.parse() {
+                Ok(addr) => {
+                    let gw = HttpGateway::new(ctx, addr).with_web(web);
+                    if let Err(e) = gw.run().await {
+                        tracing::error!(error = %e, "web console HTTP server failed");
+                    }
+                }
+                Err(e) => tracing::error!(error = %e, "invalid [gateway] http_addr"),
+            }
+        })
+    });
 
     tracing::info!(
         gateway = %gateway_flag,
@@ -891,6 +1115,10 @@ ltm_enabled = false
 http_addr = "127.0.0.1:7777"
 # Telegram — set token via TELEGRAM_BOT_TOKEN env var
 telegram_enabled = false
+# Web console bearer token — generated by `talon init`; /api/v1 does not
+# mount without it. v1 SSE auth uses ?token= (EventSource cannot set headers);
+# keep the bind localhost unless you terminate TLS in front.
+# api_token = "talon_..."
 "#
 }
 

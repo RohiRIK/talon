@@ -7,6 +7,7 @@ members = [
     "crates/talon-tools",
     "crates/talon-gateway",
     "crates/talon-plugins",
+    "crates/talon-secrets",
 ]
 resolver = "2"
 
@@ -38,6 +39,8 @@ reqwest          = { version = "0.12", default-features = false, features = ["ru
 
 # Web framework
 axum             = "0.8"
+# Embedded web console assets (web-ui feature) — web/dist compiled into the binary
+rust-embed       = "8"
 
 # Database — SQLite (bundled, FTS5 via vtab feature)
 rusqlite         = { version = "0.32", features = ["bundled", "vtab"] }
@@ -68,6 +71,11 @@ notify           = "8"
 
 # OS keychain
 keyring          = "3"
+
+# Builtin vault crypto (talon-secrets) — audited RustCrypto crates
+aes-gcm          = "0.10"
+argon2           = "0.5"
+base64           = "0.22"
 
 # Error handling
 thiserror        = "2"
