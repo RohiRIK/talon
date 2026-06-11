@@ -16,6 +16,7 @@ pub mod handlers;
 #[cfg(feature = "web-ui")]
 pub mod serve_ui;
 pub mod sse;
+pub mod tokens;
 
 use std::sync::Arc;
 
@@ -23,12 +24,12 @@ use axum::extract::{Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::routing::{delete, get, post};
+use axum::{Extension, Json, Router};
 use tokio::sync::broadcast;
 
 use talon_core::scheduler::{RunEvent, SchedulerHandle};
-use talon_memory::{CronStore, RunStore};
+use talon_memory::{CronStore, RunStore, TokenRole, TokenStore};
 
 use crate::GatewayContext;
 pub use approvals::{ApprovalBroker, PendingApproval};
@@ -36,6 +37,18 @@ pub use approvals::{ApprovalBroker, PendingApproval};
 /// Capacity of the run-event broadcast feed. Slow SSE subscribers lose old
 /// events rather than blocking the scheduler.
 pub const EVENT_CHANNEL_CAP: usize = 256;
+
+/// Who is making the request — resolved by the auth middleware and available
+/// to handlers via request extensions (criterion 5).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AuthIdentity {
+    pub name: String,
+    pub role: TokenRole,
+}
+
+/// Identity assigned to the legacy `[gateway] api_token` (criterion 6:
+/// implicit admin during the deprecation window).
+pub const LEGACY_TOKEN_NAME: &str = "legacy";
 
 /// Everything the `/api/v1` handlers need, cheap to clone per request.
 #[derive(Clone)]
@@ -46,6 +59,7 @@ pub struct WebState {
     pub sched: SchedulerHandle,
     pub events: broadcast::Sender<RunEvent>,
     pub approvals: ApprovalBroker,
+    pub tokens: TokenStore,
     token: Arc<str>,
 }
 
@@ -60,6 +74,7 @@ impl WebState {
         sched: SchedulerHandle,
         events: broadcast::Sender<RunEvent>,
         approvals: ApprovalBroker,
+        tokens: TokenStore,
         token: &str,
     ) -> Result<Self, crate::GatewayError> {
         let token = token.trim();
@@ -75,6 +90,7 @@ impl WebState {
             sched,
             events,
             approvals,
+            tokens,
             token: Arc::from(token),
         })
     }
@@ -103,43 +119,80 @@ pub fn api_router(state: WebState) -> Router {
         .route("/approvals", get(handlers::list_approvals))
         .route("/approvals/{call_id}", post(handlers::resolve_approval))
         .route("/events", get(sse::events))
+        .route("/me", get(me))
+        .route("/tokens", get(tokens::list).post(tokens::create))
+        .route("/tokens/{name}", delete(tokens::revoke))
         .layer(middleware::from_fn_with_state(state.clone(), require_token))
         .with_state(state)
 }
 
-/// Bearer-token gate. `Authorization: Bearer <token>` everywhere; the SSE
+/// `GET /api/v1/me` — the caller's token name and role (criterion 5; the
+/// console login view validates against this).
+async fn me(Extension(identity): Extension<AuthIdentity>) -> Json<AuthIdentity> {
+    Json(identity)
+}
+
+/// Auth gate (criteria 4–6). Resolves an [`AuthIdentity`] from either the
+/// legacy `[gateway] api_token` (implicit admin) or a named token in
+/// `api_tokens`, then enforces the role: viewers get GET/HEAD only. The SSE
 /// path additionally accepts `?token=<token>` (EventSource limitation —
 /// localhost-default bind and no URI logging on that path bound the risk).
-async fn require_token(State(state): State<WebState>, req: Request, next: Next) -> Response {
-    let expected = state.token.as_ref();
-
-    let header_ok = req
+async fn require_token(State(state): State<WebState>, mut req: Request, next: Next) -> Response {
+    let header_token = req
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .is_some_and(|t| token_eq(t, expected));
+        .map(str::to_string);
 
-    let query_ok = req.uri().path().ends_with("/events")
-        && req
-            .uri()
-            .query()
-            .map(|q| {
-                q.split('&')
-                    .filter_map(|pair| pair.strip_prefix("token="))
-                    .any(|t| token_eq(t, expected))
-            })
-            .unwrap_or(false);
-
-    if header_ok || query_ok {
-        next.run(req).await
+    let query_token = if req.uri().path().ends_with("/events") {
+        req.uri().query().and_then(|q| {
+            q.split('&')
+                .find_map(|pair| pair.strip_prefix("token=").map(str::to_string))
+        })
     } else {
-        (
+        None
+    };
+
+    let mut identity: Option<AuthIdentity> = None;
+    for presented in [header_token, query_token].into_iter().flatten() {
+        if token_eq(&presented, state.token.as_ref()) {
+            identity = Some(AuthIdentity {
+                name: LEGACY_TOKEN_NAME.to_string(),
+                role: TokenRole::Admin,
+            });
+            break;
+        }
+        match state.tokens.verify(&presented).await {
+            Ok(Some((name, role))) => {
+                identity = Some(AuthIdentity { name, role });
+                break;
+            }
+            Ok(None) => {}
+            Err(e) => tracing::error!(error = %e, "token verification failed"),
+        }
+    }
+
+    let Some(identity) = identity else {
+        return (
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({ "error": "unauthorized" })),
         )
-            .into_response()
+            .into_response();
+    };
+
+    // Role gate (criterion 5): mutating methods are admin-only.
+    let read_only = matches!(req.method(), &axum::http::Method::GET | &axum::http::Method::HEAD);
+    if !read_only && identity.role == TokenRole::Viewer {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "viewer tokens are read-only" })),
+        )
+            .into_response();
     }
+
+    req.extensions_mut().insert(identity);
+    next.run(req).await
 }
 
 /// Constant-time-ish comparison: never short-circuits on the first differing
@@ -184,6 +237,7 @@ mod tests {
         let db = Arc::new(Database::open(":memory:").expect("open"));
         db.init_schema().await.expect("schema");
         let cron = CronStore::new(Arc::clone(&db));
+        let tokens = TokenStore::new(Arc::clone(&db));
         let runs = RunStore::new(db);
         let scheduler = Scheduler::new(cron.clone(), Arc::new(NoopRunner));
         let sched = scheduler.handle();
@@ -200,6 +254,7 @@ mod tests {
             sched,
             events,
             ApprovalBroker::new(),
+            tokens,
             TOKEN,
         )
         .expect("state")
@@ -318,6 +373,7 @@ mod tests {
         let db = Database::open(":memory:").expect("open");
         let db = Arc::new(db);
         let cron = CronStore::new(Arc::clone(&db));
+        let tokens = TokenStore::new(Arc::clone(&db));
         let runs = RunStore::new(db);
         let scheduler = Scheduler::new(cron.clone(), Arc::new(NoopRunner));
         let ctx = Arc::new(GatewayContext::new(Arc::new(MockProvider::text(
@@ -330,6 +386,7 @@ mod tests {
             scheduler.handle(),
             events,
             ApprovalBroker::new(),
+            tokens,
             "   ",
         );
         assert!(result.is_err());
@@ -626,6 +683,7 @@ mod tests {
         let db = Arc::new(Database::open(":memory:").expect("open"));
         db.init_schema().await.expect("schema");
         let cron = CronStore::new(Arc::clone(&db));
+        let tokens = TokenStore::new(Arc::clone(&db));
         let runs = RunStore::new(db);
         let scheduler = Scheduler::new(cron.clone(), Arc::new(NoopRunner));
         let sched = scheduler.handle();
@@ -642,8 +700,17 @@ mod tests {
                     level: talon_core::approval::ApprovalLevel::Dangerous,
                 })),
         );
-        WebState::new(ctx, cron, runs, sched, events, ApprovalBroker::new(), TOKEN)
-            .expect("state")
+        WebState::new(
+            ctx,
+            cron,
+            runs,
+            sched,
+            events,
+            ApprovalBroker::new(),
+            tokens,
+            TOKEN,
+        )
+        .expect("state")
     }
 
     const PLAN_REPLY: &str = r#"{"jobs":[
@@ -742,6 +809,169 @@ mod tests {
             .expect("response");
         assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert!(state.cron.list().await.expect("list").is_empty());
+    }
+
+    // ── Named tokens + roles (criteria 4–6) ─────────────────────────────────
+
+    fn with_token(method: &str, uri: &str, token: &str, body: Option<&str>) -> HttpRequest<Body> {
+        let builder = HttpRequest::builder()
+            .method(method)
+            .uri(uri)
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json");
+        match body {
+            Some(b) => builder.body(Body::from(b.to_string())).expect("request"),
+            None => builder.body(Body::empty()).expect("request"),
+        }
+    }
+
+    #[tokio::test]
+    async fn viewer_token_reads_but_cannot_mutate() {
+        let state = make_state().await;
+        let viewer = state
+            .tokens
+            .create("ro", TokenRole::Viewer)
+            .await
+            .expect("create");
+
+        let resp = app(state.clone())
+            .oneshot(with_token("GET", "/api/v1/jobs", &viewer, None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::OK, "viewer can read");
+
+        for (method, uri, body) in [
+            ("POST", "/api/v1/jobs", Some(r#"{"prompt":"x","schedule":"daily"}"#)),
+            ("PATCH", "/api/v1/jobs/some-id", Some(r#"{"enabled":false}"#)),
+            ("DELETE", "/api/v1/jobs/some-id", None),
+            ("POST", "/api/v1/tokens", Some(r#"{"name":"x","role":"admin"}"#)),
+        ] {
+            let resp = app(state.clone())
+                .oneshot(with_token(method, uri, &viewer, body))
+                .await
+                .expect("response");
+            assert_eq!(
+                resp.status(),
+                StatusCode::FORBIDDEN,
+                "{method} {uri} must 403 for viewer"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn named_admin_token_has_full_access_and_me_reports_identity() {
+        let state = make_state().await;
+        let admin = state
+            .tokens
+            .create("ops", TokenRole::Admin)
+            .await
+            .expect("create");
+
+        let resp = app(state.clone())
+            .oneshot(with_token(
+                "POST",
+                "/api/v1/jobs",
+                &admin,
+                Some(r#"{"prompt":"x","schedule":"daily"}"#),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp = app(state)
+            .oneshot(with_token("GET", "/api/v1/me", &admin, None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let me = body_json(resp).await;
+        assert_eq!(me["name"], "ops");
+        assert_eq!(me["role"], "admin");
+    }
+
+    #[tokio::test]
+    async fn legacy_token_is_implicit_admin_via_me() {
+        let state = make_state().await;
+        let resp = app(state)
+            .oneshot(authed("GET", "/api/v1/me", None))
+            .await
+            .expect("response");
+        let me = body_json(resp).await;
+        assert_eq!(me["name"], LEGACY_TOKEN_NAME);
+        assert_eq!(me["role"], "admin");
+    }
+
+    #[tokio::test]
+    async fn revoked_token_gets_401() {
+        let state = make_state().await;
+        let raw = state
+            .tokens
+            .create("gone", TokenRole::Admin)
+            .await
+            .expect("create");
+        state.tokens.revoke("gone").await.expect("revoke");
+
+        let resp = app(state)
+            .oneshot(with_token("GET", "/api/v1/jobs", &raw, None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn token_crud_roundtrip_shows_raw_once_and_list_never() {
+        let state = make_state().await;
+
+        let resp = app(state.clone())
+            .oneshot(authed(
+                "POST",
+                "/api/v1/tokens",
+                Some(r#"{"name":"ci","role":"viewer"}"#),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let created = body_json(resp).await;
+        let raw = created["token"].as_str().expect("raw token").to_string();
+        assert!(raw.starts_with("talon_"));
+
+        // Duplicate name → 409.
+        let resp = app(state.clone())
+            .oneshot(authed(
+                "POST",
+                "/api/v1/tokens",
+                Some(r#"{"name":"ci","role":"viewer"}"#),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+
+        // List never contains the raw token.
+        let resp = app(state.clone())
+            .oneshot(authed("GET", "/api/v1/tokens", None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let list = body_json(resp).await;
+        assert!(!list.to_string().contains(&raw));
+
+        // Viewer cannot even list tokens.
+        let resp = app(state.clone())
+            .oneshot(with_token("GET", "/api/v1/tokens", &raw, None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        // Revoke → 204, then the token stops working.
+        let resp = app(state.clone())
+            .oneshot(authed("DELETE", "/api/v1/tokens/ci", None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        let resp = app(state)
+            .oneshot(with_token("GET", "/api/v1/jobs", &raw, None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
     // ── token_eq ────────────────────────────────────────────────────────────

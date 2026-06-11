@@ -16,7 +16,7 @@ use talon_llm::{
     AnthropicProvider, FallbackProvider, GitHubCopilotProvider, LlmConfig, LlmProvider,
     OpenAiCompatProvider, ProviderChoice,
 };
-use talon_memory::{CronJob, CronStore, Database, LtmStore, RunStore, SqliteStore};
+use talon_memory::{CronJob, CronStore, Database, LtmStore, RunStore, SqliteStore, TokenStore};
 use talon_tools::mcp::{McpClient, McpServersConfig, adapt_server};
 use talon_tools::web::WebConfig;
 use talon_tools::{CronJobTool, SessionSearchTool, WebExtractTool, WebSearchTool, timeouts};
@@ -27,6 +27,7 @@ use tokio_util::task::TaskTracker;
 mod cron_cli;
 mod logging;
 mod secret_cli;
+mod token_cli;
 mod wizard;
 
 // ── CLI definition ────────────────────────────────────────────────────────────
@@ -100,6 +101,11 @@ enum Commands {
     Secret {
         #[command(subcommand)]
         action: secret_cli::SecretAction,
+    },
+    /// Manage named API tokens for the web console and HTTP API.
+    Token {
+        #[command(subcommand)]
+        action: token_cli::TokenAction,
     },
 }
 
@@ -218,6 +224,7 @@ async fn main() -> Result<()> {
         Some(Commands::Serve { gateway }) => cmd_serve(gateway, cli.accessible).await,
         Some(Commands::Cron { action }) => cron_cli::run(action).await,
         Some(Commands::Secret { action }) => secret_cli::run(action, talon_home()?).await,
+        Some(Commands::Token { action }) => token_cli::run(action, talon_home()?).await,
         None => cmd_run(cli.message, cli.config, cli.gateway, cli.accessible).await,
     }
 }
@@ -996,6 +1003,7 @@ async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
         .clone()
         .context("serve requires a database — none was opened")?;
     let store = CronStore::new(Arc::clone(&db));
+    let token_store = TokenStore::new(Arc::clone(&db));
     let run_store = RunStore::new(db);
 
     let tick_secs = std::env::var("TALON_SCHEDULER_TICK_SECS")
@@ -1023,18 +1031,27 @@ async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
     let sched_handle = scheduler.handle();
 
     let web_state = match &gateway_cfg.api_token {
-        Some(token) => Some(
-            WebState::new(
-                Arc::clone(&ctx),
-                store,
-                run_store,
-                sched_handle,
-                event_tx,
-                approvals,
-                token,
+        Some(token) => {
+            // Criterion 6: the static token still works (implicit admin), but
+            // named tokens are the way forward — say so once at startup.
+            tracing::warn!(
+                "[gateway] api_token is a legacy single-token credential — prefer named \
+                 tokens (`talon token create NAME --role admin|viewer`)"
+            );
+            Some(
+                WebState::new(
+                    Arc::clone(&ctx),
+                    store,
+                    run_store,
+                    sched_handle,
+                    event_tx,
+                    approvals,
+                    token_store,
+                    token,
+                )
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
             )
-            .map_err(|e| anyhow::anyhow!("{e}"))?,
-        ),
+        }
         None => {
             tracing::warn!(
                 "no [gateway] api_token in config.toml — web console API not mounted \

@@ -5236,6 +5236,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "sqlite-vec",
  "thiserror 2.0.18",
  "tokio",
