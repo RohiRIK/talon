@@ -84,7 +84,12 @@ anyhow           = "1"
 
 # Observability
 tracing              = "0.1"
-tracing-subscriber   = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber   = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender     = "0.2"
+# Metrics facade — recorder-less calls are no-ops; the Prometheus recorder is
+# installed only by `talon serve` (web console /metrics).
+metrics                      = "0.24"
+metrics-exporter-prometheus  = { version = "0.16", default-features = false }
 
 # Identifiers + time
 uuid       = { version = "1", features = ["v4"] }

@@ -59,6 +59,11 @@ impl Gateway for HttpGateway {
                 app = app.nest("/api/v1", crate::web::api_router(web.clone()));
                 tracing::info!("web console API mounted at /api/v1");
 
+                if web.metrics_render.is_some() {
+                    app = app.merge(crate::web::metrics_router(web.clone()));
+                    tracing::info!("prometheus metrics mounted at /metrics (token-protected)");
+                }
+
                 #[cfg(feature = "web-ui")]
                 {
                     use axum::http::{StatusCode, Uri};

@@ -329,7 +329,28 @@ impl Scheduler {
                 });
             }
 
-            let outcome = runner.run(job).await;
+            // Correlation span (criterion 17): everything the runner logs —
+            // agent events, tool calls, LLM retries — carries both ids.
+            let run_span = tracing::info_span!(
+                "run",
+                job_id = %job_id,
+                run_id = %run_id.as_deref().unwrap_or("none"),
+            );
+
+            metrics::gauge!("talon_active_jobs").increment(1);
+            let started = std::time::Instant::now();
+            let outcome = {
+                use tracing::Instrument as _;
+                runner.run(job).instrument(run_span).await
+            };
+            metrics::histogram!("talon_run_duration_seconds")
+                .record(started.elapsed().as_secs_f64());
+            metrics::gauge!("talon_active_jobs").decrement(1);
+            metrics::counter!(
+                "talon_runs_total",
+                "status" => if outcome.success { "success" } else { "failure" },
+            )
+            .increment(1);
 
             // Advance the schedule from the fire instant (`now`), not from
             // whenever the agent finished — keeps a slow job from dragging
@@ -444,6 +465,84 @@ mod tests {
     async fn drain(tracker: TaskTracker) {
         tracker.close();
         tracker.wait().await;
+    }
+
+    /// Shared-buffer writer so a test can capture formatted tracing output.
+    #[derive(Clone)]
+    struct BufWriter(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for BufWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("lock").extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for BufWriter {
+        type Writer = BufWriter;
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    /// A runner that emits a log line from inside the run.
+    struct LoggingRunner;
+
+    impl JobRunner for LoggingRunner {
+        fn run(&self, _job: CronJob) -> Pin<Box<dyn Future<Output = JobOutcome> + Send + '_>> {
+            Box::pin(async {
+                tracing::info!("inside the runner");
+                JobOutcome::ok(None)
+            })
+        }
+    }
+
+    /// Criterion 17: a log line emitted inside a run carries both ids via the
+    /// `run` span. Relies on the current-thread test runtime so the
+    /// thread-default subscriber covers the spawned run task.
+    #[tokio::test]
+    async fn run_span_correlates_job_and_run_ids() {
+        let (cron, runs) = stores().await;
+        let job = cron
+            .create(CronJob::new(
+                "p",
+                CronSchedule::Cron("0 0 * * *".into()),
+                "s",
+            ))
+            .await
+            .expect("job");
+
+        let buf = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(BufWriter(Arc::clone(&buf)))
+            .with_ansi(false)
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let scheduler =
+            Scheduler::new(cron.clone(), Arc::new(LoggingRunner)).with_run_store(runs.clone());
+        let tracker = TaskTracker::new();
+        scheduler.dispatch_trigger(&job.id, &tracker).await;
+        drain(tracker).await;
+
+        let log = String::from_utf8(buf.lock().expect("lock").clone()).expect("utf8");
+        let rows = runs.list_for_job(&job.id, 10).await.expect("rows");
+        assert_eq!(rows.len(), 1);
+        assert!(
+            log.contains("inside the runner"),
+            "runner line captured: {log}"
+        );
+        assert!(
+            log.contains(&format!("job_id={}", job.id)),
+            "job_id in span: {log}"
+        );
+        assert!(
+            log.contains(&format!("run_id={}", rows[0].id)),
+            "run_id in span: {log}"
+        );
     }
 
     #[tokio::test]

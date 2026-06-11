@@ -13,6 +13,7 @@
 pub mod approvals;
 pub mod flows;
 pub mod handlers;
+pub mod logs;
 #[cfg(feature = "web-ui")]
 pub mod serve_ui;
 pub mod sse;
@@ -50,6 +51,10 @@ pub struct AuthIdentity {
 /// implicit admin during the deprecation window).
 pub const LEGACY_TOKEN_NAME: &str = "legacy";
 
+/// Type-erased Prometheus render closure — keeps the exporter crate out of
+/// the gateway's dependency tree (the binary installs the recorder).
+pub type MetricsRender = Arc<dyn Fn() -> String + Send + Sync>;
+
 /// Everything the `/api/v1` handlers need, cheap to clone per request.
 #[derive(Clone)]
 pub struct WebState {
@@ -60,6 +65,8 @@ pub struct WebState {
     pub events: broadcast::Sender<RunEvent>,
     pub approvals: ApprovalBroker,
     pub tokens: TokenStore,
+    pub log_ring: Option<Arc<logs::LogRing>>,
+    pub metrics_render: Option<MetricsRender>,
     token: Arc<str>,
 }
 
@@ -91,8 +98,22 @@ impl WebState {
             events,
             approvals,
             tokens,
+            log_ring: None,
+            metrics_render: None,
             token: Arc::from(token),
         })
+    }
+
+    /// Attach the live log ring (criterion 20).
+    pub fn with_log_ring(mut self, ring: Arc<logs::LogRing>) -> Self {
+        self.log_ring = Some(ring);
+        self
+    }
+
+    /// Attach the Prometheus render closure (criterion 19).
+    pub fn with_metrics(mut self, render: MetricsRender) -> Self {
+        self.metrics_render = Some(render);
+        self
     }
 }
 
@@ -119,8 +140,47 @@ pub fn api_router(state: WebState) -> Router {
         .route("/me", get(me))
         .route("/tokens", get(tokens::list).post(tokens::create))
         .route("/tokens/{name}", delete(tokens::revoke))
+        .route("/logs/tail", get(logs::tail))
+        .layer(middleware::from_fn_with_state(state.clone(), require_token))
+        .layer(middleware::from_fn(request_id))
+        .with_state(state)
+}
+
+/// Token-protected Prometheus endpoint, mounted at the root (`/metrics`) so
+/// scrape configs use the conventional path (criterion 19).
+pub fn metrics_router(state: WebState) -> Router {
+    Router::new()
+        .route("/metrics", get(metrics_handler))
         .layer(middleware::from_fn_with_state(state.clone(), require_token))
         .with_state(state)
+}
+
+async fn metrics_handler(State(state): State<WebState>) -> Response {
+    match &state.metrics_render {
+        Some(render) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/plain; version=0.0.4")],
+            render(),
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Correlation middleware (criterion 17): every request gets a `request_id`,
+/// echoed in the `x-request-id` response header and attached to the request's
+/// tracing span.
+async fn request_id(req: Request, next: Next) -> Response {
+    use tracing::Instrument as _;
+
+    let id = uuid::Uuid::new_v4().simple().to_string();
+    let span = tracing::info_span!("http", request_id = %id);
+
+    let mut resp = next.run(req).instrument(span).await;
+    if let Ok(value) = axum::http::HeaderValue::from_str(&id) {
+        resp.headers_mut().insert("x-request-id", value);
+    }
+    resp
 }
 
 /// `GET /api/v1/me` — the caller's token name and role (criterion 5; the
@@ -994,6 +1054,85 @@ mod tests {
             .await
             .expect("response");
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // ── Observability surface (criteria 17, 19, 20) ─────────────────────────
+
+    #[tokio::test]
+    async fn responses_carry_request_id_header() {
+        let state = make_state().await;
+        let resp = app(state)
+            .oneshot(authed("GET", "/api/v1/jobs", None))
+            .await
+            .expect("response");
+        let id = resp
+            .headers()
+            .get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+            .expect("x-request-id present");
+        assert_eq!(id.len(), 32, "uuid simple form");
+    }
+
+    #[tokio::test]
+    async fn metrics_route_is_token_protected_and_renders() {
+        let state = make_state().await.with_metrics(Arc::new(|| {
+            "talon_runs_total{status=\"success\"} 1\n".to_string()
+        }));
+        let router = Router::new().merge(metrics_router(state));
+
+        let unauthed = HttpRequest::builder()
+            .method("GET")
+            .uri("/metrics")
+            .body(Body::empty())
+            .expect("request");
+        let resp = router.clone().oneshot(unauthed).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp = router
+            .oneshot(authed("GET", "/metrics", None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        assert!(String::from_utf8_lossy(&body).contains("talon_runs_total"));
+    }
+
+    #[tokio::test]
+    async fn logs_tail_streams_backlog_with_level_filter() {
+        use futures::StreamExt as _;
+
+        let ring = Arc::new(logs::LogRing::new());
+        ring.push(logs::LogLine {
+            ts: "2026-06-11T00:00:00Z".into(),
+            level: "DEBUG".into(),
+            target: "t".into(),
+            message: "noisy debug line".into(),
+        });
+        ring.push(logs::LogLine {
+            ts: "2026-06-11T00:00:01Z".into(),
+            level: "ERROR".into(),
+            target: "t".into(),
+            message: "important error line".into(),
+        });
+        let state = make_state().await.with_log_ring(ring);
+
+        let resp = app(state)
+            .oneshot(authed("GET", "/api/v1/logs/tail?level=error", None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let mut body = resp.into_body().into_data_stream();
+        let first = tokio::time::timeout(std::time::Duration::from_secs(2), body.next())
+            .await
+            .expect("first frame in time")
+            .expect("stream open")
+            .expect("frame ok");
+        let text = String::from_utf8_lossy(&first);
+        assert!(text.contains("important error line"), "got: {text}");
+        assert!(!text.contains("noisy debug line"), "debug filtered: {text}");
     }
 
     // ── token_eq ────────────────────────────────────────────────────────────

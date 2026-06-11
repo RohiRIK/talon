@@ -213,7 +213,7 @@ impl Tool for ReadFileTool {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    init_tracing(&cli.log_level)?;
+    let log_handle = logging::init(&cli.log_level, talon_home().ok())?;
 
     match cli.command {
         Some(Commands::Init) => cmd_init().await,
@@ -221,7 +221,9 @@ async fn main() -> Result<()> {
         Some(Commands::Memory { action }) => cmd_memory(action).await,
         Some(Commands::Cache { action }) => cmd_cache(action).await,
         Some(Commands::Doctor) => cmd_doctor().await,
-        Some(Commands::Serve { gateway }) => cmd_serve(gateway, cli.accessible).await,
+        Some(Commands::Serve { gateway }) => {
+            cmd_serve(gateway, cli.accessible, Arc::clone(&log_handle.ring)).await
+        }
         Some(Commands::Cron { action }) => cron_cli::run(action).await,
         Some(Commands::Secret { action }) => secret_cli::run(action, talon_home()?).await,
         Some(Commands::Token { action }) => token_cli::run(action, talon_home()?).await,
@@ -1058,7 +1060,11 @@ async fn deliver(job_label: &str, deliver_to: &str, output: Option<&str>) {
     );
 }
 
-async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
+async fn cmd_serve(
+    gateway_flag: String,
+    accessible: bool,
+    log_ring: Arc<talon_gateway::web::logs::LogRing>,
+) -> Result<()> {
     let provider = match resolve_provider()? {
         Some(p) => p,
         None => return Ok(()),
@@ -1106,19 +1112,31 @@ async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
                 "[gateway] api_token is a legacy single-token credential — prefer named \
                  tokens (`talon token create NAME --role admin|viewer`)"
             );
-            Some(
-                WebState::new(
-                    Arc::clone(&ctx),
-                    store,
-                    run_store,
-                    sched_handle,
-                    event_tx,
-                    approvals,
-                    token_store,
-                    token,
-                )
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            let mut state = WebState::new(
+                Arc::clone(&ctx),
+                store,
+                run_store,
+                sched_handle,
+                event_tx,
+                approvals,
+                token_store,
+                token,
             )
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .with_log_ring(log_ring);
+
+            // Prometheus recorder (criterion 19): installed once per process;
+            // scheduler metrics flow through the `metrics` facade either way.
+            match metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder() {
+                Ok(handle) => {
+                    state = state.with_metrics(Arc::new(move || handle.render()));
+                }
+                Err(e) => {
+                    tracing::warn!("prometheus recorder install failed: {e} — /metrics disabled")
+                }
+            }
+
+            Some(state)
         }
         None => {
             tracing::warn!(
@@ -1224,20 +1242,6 @@ async fn shutdown_signal() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn init_tracing(level: &str) -> Result<()> {
-    use tracing_subscriber::{EnvFilter, fmt};
-    let filter = EnvFilter::try_new(level).or_else(|_| EnvFilter::try_new("info"))?;
-
-    // All formatted output passes the redaction registry (criterion 10) —
-    // resolved secret values never reach the terminal.
-    fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .with_writer(logging::ScrubStderr)
-        .init();
-    Ok(())
-}
 
 fn default_db_path() -> PathBuf {
     talon_home()

@@ -21,7 +21,9 @@ thiserror.workspace = true
 tracing.workspace   = true
 uuid.workspace      = true
 chrono.workspace    = true
+metrics.workspace   = true
 
 [dev-dependencies]
 talon-llm = { path = "../talon-llm", features = ["mock"] }
 tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber = { workspace = true }
