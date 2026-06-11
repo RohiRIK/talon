@@ -45,6 +45,10 @@ skills   = ["dep:talon-plugins", "talon-plugins/wasm"]
 # Web console SPA embedded into the binary (committed web/dist via rust-embed
 # in talon-gateway), served by `talon serve` at /ui. Default builds stay lean.
 web-ui   = ["talon-gateway/web-ui"]
+# External secret providers — read-only, config-gated at runtime, feature-gated
+# at compile time. Default builds compile neither.
+vault       = ["talon-secrets/vault"]
+aws-secrets = ["talon-secrets/aws-secrets"]
 
 [dev-dependencies]
 tempfile = "3"

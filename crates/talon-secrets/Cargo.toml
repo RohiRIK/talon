@@ -22,6 +22,20 @@ aes-gcm.workspace   = true
 argon2.workspace    = true
 base64.workspace    = true
 
+# feature = "vault" — HashiCorp Vault KV v2 (AppRole auth, read-only)
+reqwest    = { workspace = true, optional = true }
+serde      = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+# feature = "aws-secrets" — AWS Secrets Manager (default credential chain, read-only)
+aws-config                = { version = "1", optional = true, default-features = false, features = ["behavior-version-latest", "rustls"] }
+aws-sdk-secretsmanager    = { version = "1", optional = true, default-features = false, features = ["rustls"] }
+
+[features]
+vault       = ["dep:reqwest", "dep:serde", "dep:serde_json"]
+aws-secrets = ["dep:aws-config", "dep:aws-sdk-secretsmanager", "dep:serde_json"]
+
 [dev-dependencies]
-tokio = { workspace = true, features = ["test-util"] }
-uuid  = { workspace = true }
+tokio    = { workspace = true, features = ["test-util"] }
+uuid     = { workspace = true }
+wiremock = "0.6"

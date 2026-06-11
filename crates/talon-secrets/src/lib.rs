@@ -4,6 +4,8 @@
 //! discipline). Values resolved through this crate are registered for
 //! redaction and must never reach a persistence or logging sink in plaintext.
 
+#[cfg(feature = "aws-secrets")]
+mod aws;
 mod builtin;
 mod env;
 mod error;
@@ -11,7 +13,11 @@ mod master_key;
 pub mod redact;
 mod resolver;
 mod secret_ref;
+#[cfg(feature = "vault")]
+mod vault;
 
+#[cfg(feature = "aws-secrets")]
+pub use aws::{AWS_SCHEME, AwsProvider};
 pub use builtin::BuiltinVault;
 pub use env::{ENV_SCHEME, EnvProvider};
 pub use error::SecretError;
@@ -22,6 +28,8 @@ pub use master_key::{
 pub use redact::{RedactionGuard, RedactionRegistry};
 pub use resolver::{Resolved, SecretResolver};
 pub use secret_ref::{BUILTIN_SCHEME, SecretRef};
+#[cfg(feature = "vault")]
+pub use vault::{VAULT_SCHEME, VaultConfig, VaultProvider};
 
 use std::{future::Future, pin::Pin};
 

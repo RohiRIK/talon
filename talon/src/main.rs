@@ -946,8 +946,11 @@ impl JobRunner for TalonJobRunner {
 /// it is bootstrapped AND unlockable without a prompt (keychain or
 /// `TALON_MASTER_KEY` — a daemon never blocks on a passphrase). A locked
 /// vault is logged loudly; `{{secret:NAME}}` refs then fail their runs with
-/// an actionable error (criterion 2), never silently.
-fn build_secret_resolver(db: Option<Arc<Database>>) -> Arc<talon_secrets::SecretResolver> {
+/// an actionable error (criterion 2), never silently. External providers
+/// register only when their cargo feature is compiled in AND their
+/// `[secrets.*]` config section exists — otherwise the scheme stays
+/// unregistered and refs fail with a typed unknown-scheme error.
+async fn build_secret_resolver(db: Option<Arc<Database>>) -> Arc<talon_secrets::SecretResolver> {
     use talon_secrets::{BuiltinVault, EnvProvider, MasterKeyStore, OsKeychain, SecretResolver};
 
     let mut resolver = SecretResolver::new();
@@ -977,7 +980,69 @@ fn build_secret_resolver(db: Option<Arc<Database>>) -> Arc<talon_secrets::Secret
             Err(e) => tracing::warn!("vault state check failed: {e}"),
         }
     }
+
+    #[cfg(feature = "vault")]
+    if let Some(cfg) = load_hashicorp_vault_config() {
+        resolver.register(Arc::new(talon_secrets::VaultProvider::new(cfg)));
+        tracing::info!("hashicorp vault secret provider registered (secret://vault/…)");
+    }
+
+    #[cfg(feature = "aws-secrets")]
+    if let Some(region) = load_aws_secrets_config() {
+        let provider = talon_secrets::AwsProvider::from_default_chain(region).await;
+        resolver.register(Arc::new(provider));
+        tracing::info!("aws secrets manager provider registered (secret://aws/…)");
+    }
+
     Arc::new(resolver)
+}
+
+/// `[secrets]` table from `~/.talon/config.toml`, when readable.
+#[cfg(any(feature = "vault", feature = "aws-secrets"))]
+fn load_secrets_table() -> Option<toml::Value> {
+    let cfg = talon_home().ok()?.join("config.toml");
+    let text = std::fs::read_to_string(cfg).ok()?;
+    let table: toml::Value = text.parse().ok()?;
+    table.get("secrets").cloned()
+}
+
+/// `[secrets.vault]`: `addr` + `role_id` required; the AppRole secret-id is
+/// read from the env var named by `secret_id_env` (default
+/// `VAULT_SECRET_ID`) — never from config.toml.
+#[cfg(feature = "vault")]
+fn load_hashicorp_vault_config() -> Option<talon_secrets::VaultConfig> {
+    let vault = load_secrets_table()?.get("vault")?.clone();
+    let addr = vault.get("addr")?.as_str()?.to_string();
+    let role_id = vault.get("role_id")?.as_str()?.to_string();
+    let secret_id_env = vault
+        .get("secret_id_env")
+        .and_then(|v| v.as_str())
+        .unwrap_or("VAULT_SECRET_ID");
+    match std::env::var(secret_id_env) {
+        Ok(secret_id) if !secret_id.trim().is_empty() => Some(talon_secrets::VaultConfig {
+            addr,
+            role_id,
+            secret_id,
+        }),
+        _ => {
+            tracing::warn!(
+                "[secrets.vault] configured but {secret_id_env} is unset — vault provider disabled"
+            );
+            None
+        }
+    }
+}
+
+/// `[secrets.aws]` present → enabled; returns the optional `region` override.
+/// Credentials come from the SDK default chain — nothing secret in config.
+#[cfg(feature = "aws-secrets")]
+fn load_aws_secrets_config() -> Option<Option<String>> {
+    let aws = load_secrets_table()?.get("aws")?.clone();
+    Some(
+        aws.get("region")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+    )
 }
 
 /// Route a finished job's output to its target. Phase 3 logs the delivery; live
@@ -1025,7 +1090,7 @@ async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
         ctx: Arc::clone(&ctx),
         approvals: gateway_cfg.api_token.is_some().then(|| approvals.clone()),
         events: Some(event_tx.clone()),
-        resolver: Some(build_secret_resolver(ctx.db.clone())),
+        resolver: Some(build_secret_resolver(ctx.db.clone()).await),
     });
     let scheduler = Scheduler::new(store.clone(), runner)
         .with_tick(Duration::from_secs(tick_secs))
