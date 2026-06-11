@@ -21,8 +21,11 @@ pub async fn events(
     let rx = state.events.subscribe();
     let stream = BroadcastStream::new(rx).filter_map(|item| async move {
         match item {
+            // Every outbound frame passes the redaction registry (criterion
+            // 10) — live events must never carry a resolved secret value.
             Ok(ev) => serde_json::to_string(&ev)
                 .ok()
+                .map(|data| talon_secrets::redact::global().scrub_owned(data))
                 .map(|data| Ok(Event::default().data(data))),
             // Lagged: this subscriber was too slow and missed events — the
             // console reconciles by refetching, so just skip the gap marker.

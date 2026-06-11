@@ -13,6 +13,7 @@ talon-memory = { path = "../talon-memory" }
 
 tokio.workspace     = true
 rusqlite.workspace  = true
+aho-corasick        = "1"
 chrono.workspace    = true
 thiserror.workspace = true
 tracing.workspace   = true

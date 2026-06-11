@@ -13,6 +13,7 @@ talon-core.path    = "../talon-core"
 talon-llm.path     = "../talon-llm"
 talon-memory.path  = "../talon-memory"
 talon-tools.path   = "../talon-tools"
+talon-secrets.path = "../talon-secrets"
 
 tokio.workspace        = true
 tokio-stream           = { workspace = true, features = ["sync"] }

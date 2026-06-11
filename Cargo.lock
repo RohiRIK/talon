@@ -5199,6 +5199,7 @@ dependencies = [
  "talon-core",
  "talon-llm",
  "talon-memory",
+ "talon-secrets",
  "talon-tools",
  "teloxide",
  "thiserror 2.0.18",
@@ -5267,6 +5268,7 @@ name = "talon-secrets"
 version = "0.2.0"
 dependencies = [
  "aes-gcm",
+ "aho-corasick",
  "argon2",
  "base64",
  "chrono",

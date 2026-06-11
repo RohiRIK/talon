@@ -25,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 mod cron_cli;
+mod logging;
 mod secret_cli;
 mod wizard;
 
@@ -755,6 +756,9 @@ struct TalonJobRunner {
     approvals: Option<ApprovalBroker>,
     /// Web console live feed; approval escalations are announced here.
     events: Option<broadcast::Sender<RunEvent>>,
+    /// JIT secret resolution (criteria 10–11). `None` → prompts pass through
+    /// unchanged (no secrets subsystem configured).
+    resolver: Option<Arc<talon_secrets::SecretResolver>>,
 }
 
 /// How long an out-of-scope escalation waits for a ✅/❌ from the console
@@ -766,6 +770,7 @@ impl JobRunner for TalonJobRunner {
         let ctx = Arc::clone(&self.ctx);
         let approvals = self.approvals.clone();
         let events = self.events.clone();
+        let resolver = self.resolver.clone();
         Box::pin(async move {
             let (tx, mut rx) = mpsc::channel::<AgentEvent>(64);
             // Run unattended under the job's pre-authorized scope: out-of-scope
@@ -775,10 +780,37 @@ impl JobRunner for TalonJobRunner {
                 .with_unattended_scope(job.granted_scope.clone());
 
             let session_id = job.session_id.clone();
-            let prompt = job.prompt.clone();
             let deliver_to = job.deliver_to.clone();
             let job_id = job.id.clone();
             let job_label = job.name.clone().unwrap_or_else(|| job.id.clone());
+
+            // JIT secret resolution (criteria 10–11): the resolved prompt goes
+            // to the agent only; every resolved value is registered for
+            // redaction for the lifetime of this run. An unresolvable
+            // reference aborts the run before the LLM is ever called, with an
+            // error naming the reference — never a value.
+            let mut _redaction_guards = Vec::new();
+            let prompt = match &resolver {
+                Some(r) => match r.resolve_all(&job.prompt).await {
+                    Ok(resolved) => {
+                        for (name, value) in &resolved.values {
+                            _redaction_guards.push(
+                                talon_secrets::redact::global().register(name, value.expose()),
+                            );
+                        }
+                        resolved.text
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            job = %job_label,
+                            error = %e,
+                            "secret resolution failed — run aborted before dispatch"
+                        );
+                        return JobOutcome::failed_with(format!("secret resolution failed: {e}"));
+                    }
+                },
+                None => job.prompt.clone(),
+            };
 
             // Drive the agent on its own task so we can drain events concurrently;
             // the channel closes when the agent (and its tx) drop.
@@ -879,6 +911,14 @@ impl JobRunner for TalonJobRunner {
                 error = Some(e);
             }
 
+            // Scrub the outcome at the choke point (criterion 10): these
+            // fields become cron_runs.output / .error / last_output, so no
+            // resolved value may survive past this line. Guards are still
+            // alive here — scrub must precede their drop.
+            let registry = talon_secrets::redact::global();
+            let output = registry.scrub_owned(output);
+            let error = error.map(|e| registry.scrub_owned(e));
+
             let final_output = (!output.is_empty()).then_some(output.clone());
             deliver(&job_label, &deliver_to, final_output.as_deref()).await;
 
@@ -892,6 +932,42 @@ impl JobRunner for TalonJobRunner {
             }
         })
     }
+}
+
+/// Build the daemon's secret resolver: `env` always; the builtin vault when
+/// it is bootstrapped AND unlockable without a prompt (keychain or
+/// `TALON_MASTER_KEY` — a daemon never blocks on a passphrase). A locked
+/// vault is logged loudly; `{{secret:NAME}}` refs then fail their runs with
+/// an actionable error (criterion 2), never silently.
+fn build_secret_resolver(db: Option<Arc<Database>>) -> Arc<talon_secrets::SecretResolver> {
+    use talon_secrets::{BuiltinVault, EnvProvider, MasterKeyStore, OsKeychain, SecretResolver};
+
+    let mut resolver = SecretResolver::new();
+    resolver.register(Arc::new(EnvProvider));
+
+    if let (Some(db), Ok(home)) = (db, talon_home()) {
+        let keychain = OsKeychain;
+        let key_store = MasterKeyStore::new(&home, &keychain);
+        match key_store.is_bootstrapped() {
+            Ok(true) => {
+                let env_value = std::env::var(talon_secrets::ENV_VAR).ok();
+                match key_store.unlock(env_value.as_deref(), None) {
+                    Ok(master) => {
+                        resolver.register(Arc::new(BuiltinVault::new(db, master)));
+                        tracing::info!("builtin secret vault unlocked");
+                    }
+                    Err(e) => tracing::warn!(
+                        "vault locked: {e} — jobs using {{{{secret:NAME}}}} will fail until unlocked"
+                    ),
+                }
+            }
+            Ok(false) => {
+                tracing::debug!("no vault master key — builtin secrets disabled (run `talon init`)");
+            }
+            Err(e) => tracing::warn!("vault state check failed: {e}"),
+        }
+    }
+    Arc::new(resolver)
 }
 
 /// Route a finished job's output to its target. Phase 3 logs the delivery; live
@@ -938,6 +1014,7 @@ async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
         ctx: Arc::clone(&ctx),
         approvals: gateway_cfg.api_token.is_some().then(|| approvals.clone()),
         events: Some(event_tx.clone()),
+        resolver: Some(build_secret_resolver(ctx.db.clone())),
     });
     let scheduler = Scheduler::new(store.clone(), runner)
         .with_tick(Duration::from_secs(tick_secs))
@@ -1067,7 +1144,13 @@ fn init_tracing(level: &str) -> Result<()> {
     use tracing_subscriber::{EnvFilter, fmt};
     let filter = EnvFilter::try_new(level).or_else(|_| EnvFilter::try_new("info"))?;
 
-    fmt().with_env_filter(filter).with_target(false).init();
+    // All formatted output passes the redaction registry (criterion 10) —
+    // resolved secret values never reach the terminal.
+    fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .with_writer(logging::ScrubStderr)
+        .init();
     Ok(())
 }
 

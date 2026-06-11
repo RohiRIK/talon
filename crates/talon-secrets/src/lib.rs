@@ -8,6 +8,8 @@ mod builtin;
 mod env;
 mod error;
 mod master_key;
+pub mod redact;
+mod resolver;
 mod secret_ref;
 
 pub use builtin::BuiltinVault;
@@ -17,6 +19,8 @@ pub use master_key::{
     Credential, ENV_VAR, KEYCHAIN_ENTRY, KEYCHAIN_SERVICE, KeychainStore, MasterKey,
     MasterKeyStore, OsKeychain, RECOVERY_FILE,
 };
+pub use redact::{RedactionGuard, RedactionRegistry};
+pub use resolver::{Resolved, SecretResolver};
 pub use secret_ref::{BUILTIN_SCHEME, SecretRef};
 
 use std::{future::Future, pin::Pin};
