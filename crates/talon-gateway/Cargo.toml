@@ -12,8 +12,10 @@ rust-version.workspace = true
 talon-core.path    = "../talon-core"
 talon-llm.path     = "../talon-llm"
 talon-memory.path  = "../talon-memory"
+talon-tools.path   = "../talon-tools"
 
 tokio.workspace        = true
+tokio-stream           = { workspace = true, features = ["sync"] }
 futures.workspace      = true
 serde.workspace        = true
 serde_json.workspace   = true
@@ -37,6 +39,10 @@ unicode-width.workspace      = true
 workspace = true
 optional  = true
 
+[dependencies.rust-embed]
+workspace = true
+optional  = true
+
 [dependencies.teloxide]
 workspace = true
 optional  = true
@@ -44,8 +50,12 @@ optional  = true
 [dev-dependencies]
 talon-llm = { path = "../talon-llm", features = ["mock"] }
 tower     = "0.5"
+chrono.workspace = true
 
 [features]
 default  = []
 telegram = ["dep:teloxide"]
 images   = ["dep:ratatui-image"]
+# Embedded web console SPA (web/dist via rust-embed), served at /ui.
+# Default builds stay lean — no asset bytes, no rust-embed.
+web-ui   = ["dep:rust-embed"]

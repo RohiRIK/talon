@@ -11,18 +11,30 @@ use talon_core::events::AgentEvent;
 
 use crate::{Gateway, GatewayContext, GatewayError, RenderMode};
 
-/// HTTP gateway — single `POST /v1/messages` endpoint.
+/// HTTP gateway — `POST /v1/messages`, plus the web console (`/api/v1`) when
+/// a [`crate::web::WebState`] is attached via [`HttpGateway::with_web`].
 ///
 /// Build this first (no bot token required) to verify the agent loop works
 /// before wiring Telegram and TUI.
 pub struct HttpGateway {
     ctx: Arc<GatewayContext>,
     addr: SocketAddr,
+    web: Option<crate::web::WebState>,
 }
 
 impl HttpGateway {
     pub fn new(ctx: Arc<GatewayContext>, addr: SocketAddr) -> Self {
-        Self { ctx, addr }
+        Self {
+            ctx,
+            addr,
+            web: None,
+        }
+    }
+
+    /// Mount the web console API under `/api/v1` (and its auth) on this server.
+    pub fn with_web(mut self, web: crate::web::WebState) -> Self {
+        self.web = Some(web);
+        self
     }
 }
 
@@ -39,9 +51,32 @@ impl Gateway for HttpGateway {
         Box::pin(async move {
             let app_state = Arc::clone(&self.ctx);
 
-            let app = Router::new()
+            let mut app = Router::new()
                 .route("/v1/messages", post(handle_message))
                 .with_state(app_state);
+
+            if let Some(web) = &self.web {
+                app = app.nest("/api/v1", crate::web::api_router(web.clone()));
+                tracing::info!("web console API mounted at /api/v1");
+
+                #[cfg(feature = "web-ui")]
+                {
+                    use axum::http::{StatusCode, Uri};
+                    use axum::response::{IntoResponse, Redirect};
+                    app = app.nest("/ui", crate::web::serve_ui::router()).fallback(
+                        // axum's nest does not match the bare trailing-slash
+                        // form — send "/ui/" to "/ui" instead of a 404.
+                        |uri: Uri| async move {
+                            if uri.path() == "/ui/" {
+                                Redirect::permanent("/ui").into_response()
+                            } else {
+                                (StatusCode::NOT_FOUND, "not found").into_response()
+                            }
+                        },
+                    );
+                    tracing::info!("web console UI mounted at /ui");
+                }
+            }
 
             let listener = tokio::net::TcpListener::bind(self.addr)
                 .await

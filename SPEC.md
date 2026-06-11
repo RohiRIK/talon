@@ -64,7 +64,7 @@ Phases 0–5 **and** 2.5 complete. `cargo nextest run --workspace` → 383/383 g
 | `talon-memory` | LTM (`sqlite-vec` + FTS5 + RRF), `WorkingMemory`, `FactExtractor`, dedup, `Promoter`, `HybridSearch`, `SemanticCache`, `DecayEngine`, `ContextBuilder`, `Database` pool | **Yes** — new `CronStore` lives here; jobs recall LTM |
 | `talon-llm` | `LlmProvider` trait + impls (Codex, ClaudeCode, Antigravity, keyless github-copilot, …) | Yes — jobs run through a provider |
 | `talon-tools` | fs, terminal (docker/native), web search/extract, browser (feat), MCP client/adapter, subprocess plugin, send_message, session_search | Yes — new `CronJobTool` lives here |
-| `talon-gateway` | `cli`, `http`, `telegram`, `tui`, `registry`; `GatewayContext::build_agent(event_tx)` constructs a wired `Agent` | **Yes** — daemon reuses this; output routes to a channel |
+| `talon-gateway` | `cli`, `http`, `telegram`, `tui`, `registry`, `web` (Phase 7: `/api/v1` console API + embedded `/ui` SPA behind `web-ui` feature); `GatewayContext::build_agent(event_tx)` constructs a wired `Agent` | **Yes** — daemon reuses this; output routes to a channel |
 | `talon-plugins` | WASM host (wasmtime) — Phase 6, **not started, not needed for the scheduler** | No |
 
 **Key construction path to reuse:** `GatewayContext::build_agent(event_tx)` (crates/talon-gateway/src/lib.rs:132) already assembles provider + dispatcher + db into an `Agent`. The scheduler builds jobs through this exact path — no new wiring of the agent internals.

@@ -51,6 +51,7 @@ cargo install talon
 - **WASM plugins** — hot-reload any language that compiles to `.wasm`; no restart required
 - **MCP client** — every Claude Code MCP tool plugs straight in
 - **Cron scheduling** — schedule LLM agents to run on a cron expression, stored in SQLite
+- **Web console** (`web-ui` feature) — embedded SPA at `/ui`: job dashboard, execution graph with per-run failure status, AI flow builder (NL → DAG of jobs + scope grant box), approvals inbox over SSE — Jenkins + n8n for AI agents, in the same single binary
 - **Semantic search** (optional feature) — `fastembed` ONNX embeddings + RRF fusion with FTS5
 - **Self-evolving skills** (v2) — DSPy+GEPA Python sidecar improves skill prompts over time
 

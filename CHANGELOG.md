@@ -4,6 +4,14 @@ All notable changes to the Talon project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Phase 7: Web Console ("Jenkins + n8n for AI agents")
+- **`cron_runs` per-run history (migration v5)** — one row per execution attempt (`running/success/failure/timeout/skipped/denied`, output, error, `AgentEvent` transcript). `RunStore` in `talon-memory`; the scheduler records the lifecycle around the `JobRunner` seam. `cron_jobs.last_run` crash semantics unchanged; without `with_run_store` the scheduler behaves exactly as before.
+- **Manual trigger** — `SchedulerCmd::Trigger` over a `SchedulerHandle`: runs a job immediately without advancing `next_run`/`run_count` (Jenkins "Build Now").
+- **`/api/v1` web console API** (`talon-gateway::web`) — jobs CRUD + trigger, run history, `GET /graph` (nodes + `context_from` edges), SSE `GET /events` (`RunEvent` broadcast), approvals inbox (`ApprovalBroker` resolves §4.4 out-of-scope escalations from the browser; 120s timeout → deny). Bearer-token auth on every route, fail-closed (no token in config → API not mounted); SSE accepts `?token=` (EventSource limitation, localhost-default bind).
+- **AI flow builder endpoints** — `POST /flows/plan` (NL → LLM-drafted DAG of cron jobs; croner-validated, scope predicted per job via `predict_scope`; writes nothing) and `POST /flows` (commits an approved draft: strips `Dangerous`-class tools server-side, topo-sorts, remaps draft keys to real job ids).
+- **Embedded SPA** (`web/`, React + Vite + React Flow; committed `web/dist` served at `/ui` via `rust-embed` behind the opt-in `web-ui` feature) — Dashboard (web twin of `talon cron list`), execution Graph (node color = last run status), Job detail (run timeline + transcripts + scope), Flow Builder (draft + grant-box checklist), Approvals inbox. Rebuild assets with `bun run build` in `web/`.
+- **`talon init`** now auto-generates `[gateway] api_token` when absent (existing tokens preserved).
+
 ### Added — Phase 2.5: Talon LTM (SQLite + sqlite-vec)
 - **`talon-ltm` memory layer** — long-term memory implemented natively in Rust over a single SQLite database (ADR 0008 — supersedes the earlier LanceDB plan; `sqlite-vec` for vectors + FTS5 for keyword + RRF fusion in Rust, no LanceDB/Redis):
   - `sqlite-vec` extension wired into the `deadpool-sqlite` pool (2.5.1)

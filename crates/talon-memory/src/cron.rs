@@ -369,7 +369,7 @@ impl CronStore {
 // ── Free helpers ────────────────────────────────────────────────────────────────
 
 /// UTC RFC3339 with a `Z` suffix and seconds precision — the canonical stored form.
-fn fmt_utc(dt: DateTime<Utc>) -> String {
+pub(crate) fn fmt_utc(dt: DateTime<Utc>) -> String {
     dt.to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
@@ -379,6 +379,13 @@ fn json_col<T: DeserializeOwned>(row: &Row<'_>, name: &str) -> rusqlite::Result<
     let raw: String = row.get(name)?;
     serde_json::from_str(&raw)
         .map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, Type::Text, Box::new(e)))
+}
+
+/// Validate a schedule + timezone without persisting anything — the exact
+/// computation `CronStore::create` runs. Lets API layers reject bad cron
+/// expressions or timezones with a 4xx before any row exists.
+pub fn validate_schedule(schedule: &CronSchedule, tz: &str) -> Result<(), MemoryError> {
+    compute_next_run(schedule, tz, Utc::now()).map(|_| ())
 }
 
 /// Compute the next run instant (in UTC) for a schedule evaluated in `tz`,
