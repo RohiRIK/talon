@@ -124,10 +124,13 @@ impl SecretProvider for BuiltinVault {
         sref: &'a SecretRef,
     ) -> Pin<Box<dyn Future<Output = Result<SecretValue, SecretError>> + Send + 'a>> {
         Box::pin(async move {
-            let row = self.fetch(&sref.path).await?.ok_or_else(|| SecretError::NotFound {
-                scheme: BUILTIN_SCHEME.to_string(),
-                name: sref.display_name().to_string(),
-            })?;
+            let row = self
+                .fetch(&sref.path)
+                .await?
+                .ok_or_else(|| SecretError::NotFound {
+                    scheme: BUILTIN_SCHEME.to_string(),
+                    name: sref.display_name().to_string(),
+                })?;
 
             let dek = open(self.master.bytes(), &row.wrapped_dek, &row.dek_nonce)?;
             let dek: [u8; KEY_LEN] = dek.as_slice().try_into().map_err(|_| {
@@ -145,9 +148,8 @@ impl SecretProvider for BuiltinVault {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SecretMeta>, SecretError>> + Send + '_>> {
         Box::pin(async move {
             self.interact(|conn| {
-                let mut stmt = conn.prepare(
-                    "SELECT name, provider, created_at FROM secrets ORDER BY name",
-                )?;
+                let mut stmt =
+                    conn.prepare("SELECT name, provider, created_at FROM secrets ORDER BY name")?;
                 let rows = stmt.query_map([], |row| {
                     Ok(SecretMeta {
                         name: row.get(0)?,
@@ -175,12 +177,16 @@ fn seal(key: &[u8; KEY_LEN], plaintext: &[u8]) -> Result<(Vec<u8>, Vec<u8>), Sec
 
 fn open(key: &[u8; KEY_LEN], ciphertext: &[u8], nonce: &[u8]) -> Result<Vec<u8>, SecretError> {
     if nonce.len() != NONCE_LEN {
-        return Err(SecretError::Crypto("stored nonce has the wrong length".to_string()));
+        return Err(SecretError::Crypto(
+            "stored nonce has the wrong length".to_string(),
+        ));
     }
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
     cipher
         .decrypt(Nonce::from_slice(nonce), ciphertext)
-        .map_err(|_| SecretError::Crypto("decrypt failed — wrong master key or corrupt data".to_string()))
+        .map_err(|_| {
+            SecretError::Crypto("decrypt failed — wrong master key or corrupt data".to_string())
+        })
 }
 
 #[cfg(test)]
@@ -199,7 +205,10 @@ mod tests {
     #[tokio::test]
     async fn round_trip_set_get() {
         let (_db, vault) = vault_with_key(1).await;
-        vault.set("STRIPE_KEY", "sk_live_abc123").await.expect("set");
+        vault
+            .set("STRIPE_KEY", "sk_live_abc123")
+            .await
+            .expect("set");
 
         let sref = SecretRef::parse("{{secret:STRIPE_KEY}}").expect("ref");
         let value = vault.get(&sref).await.expect("get");

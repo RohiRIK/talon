@@ -32,9 +32,7 @@ pub async fn run(action: TokenAction, talon_home: PathBuf) -> Result<()> {
     let db_path = db_path
         .to_str()
         .context("talon home path is not valid UTF-8")?;
-    let db = Arc::new(
-        Database::open(db_path).map_err(|e| anyhow::anyhow!("open talon.db: {e}"))?,
-    );
+    let db = Arc::new(Database::open(db_path).map_err(|e| anyhow::anyhow!("open talon.db: {e}"))?);
     db.init_schema()
         .await
         .map_err(|e| anyhow::anyhow!("run migrations: {e}"))?;
@@ -63,7 +61,10 @@ pub async fn run(action: TokenAction, talon_home: PathBuf) -> Result<()> {
                 println!("No tokens. Create one: talon token create NAME --role admin|viewer");
                 return Ok(());
             }
-            println!("{:<24} {:<8} {:<20} {:<20} STATUS", "NAME", "ROLE", "CREATED", "LAST USED");
+            println!(
+                "{:<24} {:<8} {:<20} {:<20} STATUS",
+                "NAME", "ROLE", "CREATED", "LAST USED"
+            );
             for m in metas {
                 println!(
                     "{:<24} {:<8} {:<20} {:<20} {}",

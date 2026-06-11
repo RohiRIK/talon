@@ -124,7 +124,9 @@ fn take_candidate(candidate: &str) -> (usize, Option<SecretRef>) {
     } else {
         // URI form terminates at whitespace or a quoting/bracketing char.
         let end = candidate
-            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '`' | ')' | '}' | ']' | ',' | ';'))
+            .find(|c: char| {
+                c.is_whitespace() || matches!(c, '"' | '\'' | '`' | ')' | '}' | ']' | ',' | ';')
+            })
             .unwrap_or(candidate.len());
         let token = &candidate[..end];
         (token.len(), SecretRef::parse(token).ok())
@@ -183,7 +185,8 @@ mod tests {
 
     #[test]
     fn finds_all_in_mixed_text_in_order() {
-        let text = "Use {{secret:A_KEY}} then call secret://aws/prod/db#password and {{secret:B.KEY}}.";
+        let text =
+            "Use {{secret:A_KEY}} then call secret://aws/prod/db#password and {{secret:B.KEY}}.";
         let refs = SecretRef::find_all(text);
         assert_eq!(refs.len(), 3);
         assert_eq!(refs[0].path, "A_KEY");

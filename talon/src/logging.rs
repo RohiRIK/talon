@@ -27,7 +27,9 @@ pub struct ScrubWriter<W: Write>(pub W);
 impl<W: Write> Write for ScrubWriter<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match std::str::from_utf8(buf) {
-            Ok(s) => self.0.write_all(talon_secrets::redact::scrub(s).as_bytes())?,
+            Ok(s) => self
+                .0
+                .write_all(talon_secrets::redact::scrub(s).as_bytes())?,
             Err(_) => self.0.write_all(buf)?,
         }
         // Report the input as fully consumed — the caller's buffer length,
@@ -49,7 +51,8 @@ mod tests {
     fn scrub_writer_redacts_registered_values() {
         let _g = talon_secrets::redact::global().register("LOGKEY", "log-secret-value-91");
         let mut sink = ScrubWriter(Vec::new());
-        sink.write_all(b"before log-secret-value-91 after\n").expect("write");
+        sink.write_all(b"before log-secret-value-91 after\n")
+            .expect("write");
 
         let written = String::from_utf8(sink.0).expect("utf8");
         assert!(!written.contains("log-secret-value-91"));

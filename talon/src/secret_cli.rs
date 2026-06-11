@@ -49,10 +49,7 @@ pub async fn run(action: SecretAction, talon_home: PathBuf) -> Result<()> {
     let keychain = OsKeychain;
     let key_store = MasterKeyStore::new(&talon_home, &keychain);
 
-    if !key_store
-        .is_bootstrapped()
-        .map_err(|e| anyhow::anyhow!("{e}"))?
-    {
+    if !key_store.is_bootstrapped()? {
         bail!(
             "no vault master key exists yet — run `talon init` to set up the vault \
              (the key is created only after you choose an unlock credential)"
@@ -71,15 +68,11 @@ pub async fn run(action: SecretAction, talon_home: PathBuf) -> Result<()> {
             }
             if passphrase {
                 let pass = prompt_new_passphrase()?;
-                key_store
-                    .rewrap_passphrase(&master, &pass)
-                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                key_store.rewrap_passphrase(&master, &pass)?;
                 println!("Passphrase wrap written — stored secrets were not re-encrypted.");
             }
             if add_keychain {
-                key_store
-                    .rewrap_keychain(&master)
-                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                key_store.rewrap_keychain(&master)?;
                 println!("Keychain wrap written.");
             }
             Ok(())
@@ -102,25 +95,23 @@ async fn run_vault_action(action: SecretAction, vault: &BuiltinVault) -> Result<
             if value.is_empty() {
                 bail!("refusing to store an empty value");
             }
-            vault
-                .set(&name, &value)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            vault.set(&name, &value).await?;
             println!("Stored `{name}` (encrypted). Reference it as {{{{secret:{name}}}}}.");
             Ok(())
         }
         SecretAction::Get { name, reveal } => {
             if !reveal {
-                bail!("`talon secret get` prints nothing without --reveal (values never print by accident)");
+                bail!(
+                    "`talon secret get` prints nothing without --reveal (values never print by accident)"
+                );
             }
-            let sref = SecretRef::parse(&format!("{{{{secret:{name}}}}}"))
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            let value = vault.get(&sref).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+            let sref = SecretRef::parse(&format!("{{{{secret:{name}}}}}"))?;
+            let value = vault.get(&sref).await?;
             println!("{}", value.expose());
             Ok(())
         }
         SecretAction::List => {
-            let metas = vault.list().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+            let metas = vault.list().await?;
             if metas.is_empty() {
                 println!("No secrets stored.");
                 return Ok(());
@@ -137,10 +128,7 @@ async fn run_vault_action(action: SecretAction, vault: &BuiltinVault) -> Result<
             Ok(())
         }
         SecretAction::Rm { name } => {
-            let removed = vault
-                .delete(&name)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let removed = vault.delete(&name).await?;
             if removed {
                 println!("Deleted `{name}`.");
             } else {
@@ -164,11 +152,9 @@ fn unlock(key_store: &MasterKeyStore<'_>) -> Result<MasterKey> {
                 .with_display_mode(inquire::PasswordDisplayMode::Masked)
                 .prompt()
                 .with_context(|| format!("vault is locked: {hint}"))?;
-            key_store
-                .unlock(env_value.as_deref(), Some(&pass))
-                .map_err(|e| anyhow::anyhow!("{e}"))
+            Ok(key_store.unlock(env_value.as_deref(), Some(&pass))?)
         }
-        Err(e) => Err(anyhow::anyhow!("{e}")),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -177,9 +163,7 @@ async fn open_vault(talon_home: &Path, master: MasterKey) -> Result<BuiltinVault
     let db_path = db_path
         .to_str()
         .context("talon home path is not valid UTF-8")?;
-    let db = Arc::new(
-        Database::open(db_path).map_err(|e| anyhow::anyhow!("open talon.db: {e}"))?,
-    );
+    let db = Arc::new(Database::open(db_path).map_err(|e| anyhow::anyhow!("open talon.db: {e}"))?);
     db.init_schema()
         .await
         .map_err(|e| anyhow::anyhow!("run migrations: {e}"))?;
@@ -204,10 +188,7 @@ pub fn init_vault_bootstrap(talon_home: &Path) -> Result<()> {
     let keychain = OsKeychain;
     let key_store = MasterKeyStore::new(talon_home, &keychain);
 
-    if key_store
-        .is_bootstrapped()
-        .map_err(|e| anyhow::anyhow!("{e}"))?
-    {
+    if key_store.is_bootstrapped()? {
         println!("Vault master key already set up — leaving it untouched.");
         return Ok(());
     }
@@ -253,9 +234,7 @@ pub fn init_vault_bootstrap(talon_home: &Path) -> Result<()> {
         return Ok(());
     }
 
-    key_store
-        .bootstrap(&credentials)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    key_store.bootstrap(&credentials)?;
     println!("Vault master key created (stored only in wrapped form).");
     Ok(())
 }

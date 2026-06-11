@@ -334,9 +334,7 @@ impl Scheduler {
             // Advance the schedule from the fire instant (`now`), not from
             // whenever the agent finished — keeps a slow job from dragging
             // its own cadence forward and makes dispatch deterministic.
-            if advance
-                && let Err(e) = store.mark_run(&job_id, now, outcome.output.clone()).await
-            {
+            if advance && let Err(e) = store.mark_run(&job_id, now, outcome.output.clone()).await {
                 tracing::error!(job = %job_name, error = %e, "mark_run failed");
             }
 
@@ -833,8 +831,7 @@ mod tests {
             .expect("create");
 
         let (calls, runner) = counting();
-        let scheduler =
-            Scheduler::new(store.clone(), runner).with_run_store(runs.clone());
+        let scheduler = Scheduler::new(store.clone(), runner).with_run_store(runs.clone());
         let handle = scheduler.handle();
         let cancel = CancellationToken::new();
         let tracker = TaskTracker::new();

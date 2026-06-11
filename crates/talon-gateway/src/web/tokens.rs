@@ -52,10 +52,7 @@ pub struct CreateRequest {
 
 /// `POST /api/v1/tokens` — the response is the only place the raw token
 /// ever exists (criterion 4).
-pub async fn create(
-    State(state): State<WebState>,
-    Json(req): Json<CreateRequest>,
-) -> Response {
+pub async fn create(State(state): State<WebState>, Json(req): Json<CreateRequest>) -> Response {
     let name = req.name.trim();
     if name.is_empty() || name.len() > 64 {
         return (
@@ -77,15 +74,11 @@ pub async fn create(
         )
             .into_response(),
         // UNIQUE(name) violation → conflict, anything else → 500.
-        Err(MemoryError::Rusqlite(e))
-            if e.to_string().contains("UNIQUE constraint failed") =>
-        {
-            (
-                StatusCode::CONFLICT,
-                Json(serde_json::json!({ "error": "a token with this name already exists" })),
-            )
-                .into_response()
-        }
+        Err(MemoryError::Rusqlite(e)) if e.to_string().contains("UNIQUE constraint failed") => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": "a token with this name already exists" })),
+        )
+            .into_response(),
         Err(e) => internal(e),
     }
 }

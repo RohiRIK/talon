@@ -100,10 +100,7 @@ impl WebState {
 /// Nest under `/api/v1`: `Router::new().nest("/api/v1", api_router(state))`.
 pub fn api_router(state: WebState) -> Router {
     Router::new()
-        .route(
-            "/jobs",
-            get(handlers::list_jobs).post(handlers::create_job),
-        )
+        .route("/jobs", get(handlers::list_jobs).post(handlers::create_job))
         .route(
             "/jobs/{id}",
             get(handlers::get_job)
@@ -182,7 +179,10 @@ async fn require_token(State(state): State<WebState>, mut req: Request, next: Ne
     };
 
     // Role gate (criterion 5): mutating methods are admin-only.
-    let read_only = matches!(req.method(), &axum::http::Method::GET | &axum::http::Method::HEAD);
+    let read_only = matches!(
+        req.method(),
+        &axum::http::Method::GET | &axum::http::Method::HEAD
+    );
     if !read_only && identity.role == TokenRole::Viewer {
         return (
             StatusCode::FORBIDDEN,
@@ -478,9 +478,7 @@ mod tests {
             .expect("response");
         assert_eq!(resp.status(), StatusCode::CREATED);
         let created = body_json(resp).await;
-        let tools = created["granted_scope"]["tools"]
-            .as_array()
-            .expect("tools");
+        let tools = created["granted_scope"]["tools"].as_array().expect("tools");
         assert!(
             tools.iter().any(|t| t == "web_search"),
             "predict_scope applied: {tools:?}"
@@ -542,7 +540,11 @@ mod tests {
             .expect("finalize");
 
         let resp = app(state.clone())
-            .oneshot(authed("GET", &format!("/api/v1/jobs/{}/runs", job.id), None))
+            .oneshot(authed(
+                "GET",
+                &format!("/api/v1/jobs/{}/runs", job.id),
+                None,
+            ))
             .await
             .expect("response");
         assert_eq!(resp.status(), StatusCode::OK);
@@ -614,7 +616,12 @@ mod tests {
         let state = make_state().await;
         let (tx, rx) = tokio::sync::oneshot::channel();
         state.approvals.register(
-            PendingApproval::new("call-1", Some("job-1".into()), "terminal", serde_json::json!({})),
+            PendingApproval::new(
+                "call-1",
+                Some("job-1".into()),
+                "terminal",
+                serde_json::json!({}),
+            ),
             tx,
         );
 
@@ -787,7 +794,10 @@ mod tests {
         }
         let fetch = jobs.iter().find(|j| j.prompt == "p1").expect("fetch");
         assert!(
-            fetch.granted_scope.tools.contains(&"web_search".to_string()),
+            fetch
+                .granted_scope
+                .tools
+                .contains(&"web_search".to_string()),
             "Safe tool survives"
         );
 
@@ -841,10 +851,22 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK, "viewer can read");
 
         for (method, uri, body) in [
-            ("POST", "/api/v1/jobs", Some(r#"{"prompt":"x","schedule":"daily"}"#)),
-            ("PATCH", "/api/v1/jobs/some-id", Some(r#"{"enabled":false}"#)),
+            (
+                "POST",
+                "/api/v1/jobs",
+                Some(r#"{"prompt":"x","schedule":"daily"}"#),
+            ),
+            (
+                "PATCH",
+                "/api/v1/jobs/some-id",
+                Some(r#"{"enabled":false}"#),
+            ),
             ("DELETE", "/api/v1/jobs/some-id", None),
-            ("POST", "/api/v1/tokens", Some(r#"{"name":"x","role":"admin"}"#)),
+            (
+                "POST",
+                "/api/v1/tokens",
+                Some(r#"{"name":"x","role":"admin"}"#),
+            ),
         ] {
             let resp = app(state.clone())
                 .oneshot(with_token(method, uri, &viewer, body))

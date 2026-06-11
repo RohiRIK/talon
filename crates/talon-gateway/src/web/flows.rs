@@ -12,17 +12,17 @@
 
 use std::collections::{HashMap, HashSet};
 
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use talon_core::scheduler::RunEvent;
 use talon_llm::{ContentBlock, Message};
 use talon_memory::{CronJob, GrantedScope, validate_schedule};
 
-use super::handlers::{ApiError, ApiResult};
 use super::WebState;
+use super::handlers::{ApiError, ApiResult};
 
 // ── Planner prompt (stable content — keep static for provider-side caching) ──
 
@@ -329,9 +329,11 @@ pub async fn commit(
             job = job.with_context_from(parents);
         }
 
-        let stored = state.cron.create(job).await.map_err(|e| {
-            unprocessable(format!("failed to create job '{key}': {e}"))
-        })?;
+        let stored = state
+            .cron
+            .create(job)
+            .await
+            .map_err(|e| unprocessable(format!("failed to create job '{key}': {e}")))?;
         let _ = state.events.send(RunEvent::JobChanged {
             job_id: stored.id.clone(),
         });

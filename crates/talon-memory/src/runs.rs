@@ -217,7 +217,14 @@ impl RunStore {
                     "INSERT INTO cron_runs
                        (id, job_id, started_at, finished_at, status, error)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![r.id, r.job_id, r.started_at, r.finished_at, r.status.as_str(), r.error],
+                    params![
+                        r.id,
+                        r.job_id,
+                        r.started_at,
+                        r.finished_at,
+                        r.status.as_str(),
+                        r.error
+                    ],
                 )?;
                 Ok(())
             })
@@ -419,7 +426,11 @@ mod tests {
         let (cron, runs) = stores().await;
         let job = make_job(&cron, "a").await;
         let run = runs
-            .record_terminal(&job.id, RunStatus::Skipped, Some("missed-run policy".into()))
+            .record_terminal(
+                &job.id,
+                RunStatus::Skipped,
+                Some("missed-run policy".into()),
+            )
             .await
             .expect("record");
         let after = runs.get(&run.id).await.expect("get").expect("present");
@@ -516,7 +527,9 @@ mod tests {
     async fn insert_running_rejects_unknown_job() {
         let (_cron, runs) = stores().await;
         assert!(
-            runs.insert_running("no-such-job", Utc::now()).await.is_err(),
+            runs.insert_running("no-such-job", Utc::now())
+                .await
+                .is_err(),
             "FK constraint rejects orphan runs"
         );
     }

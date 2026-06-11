@@ -99,8 +99,7 @@ impl ApprovalBroker {
 
     /// Snapshot of everything currently waiting, oldest first.
     pub fn pending(&self) -> Vec<PendingApproval> {
-        let mut all: Vec<PendingApproval> =
-            self.lock().values().map(|p| p.meta.clone()).collect();
+        let mut all: Vec<PendingApproval> = self.lock().values().map(|p| p.meta.clone()).collect();
         all.sort_by_key(|p| p.requested_at);
         all
     }

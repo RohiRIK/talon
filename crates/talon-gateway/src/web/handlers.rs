@@ -4,9 +4,9 @@
 
 use std::collections::HashMap;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use talon_core::scheduler::RunEvent;
@@ -173,7 +173,9 @@ pub async fn patch_job(
             .set_enabled(&id, enabled)
             .await
             .map_err(store_err)?;
-        let _ = state.events.send(RunEvent::JobChanged { job_id: id.clone() });
+        let _ = state
+            .events
+            .send(RunEvent::JobChanged { job_id: id.clone() });
     }
     get_job(State(state), Path(id)).await
 }
@@ -269,8 +271,7 @@ pub struct Graph {
 /// an edge exists only where both ends are present in the job set.
 pub async fn graph(State(state): State<WebState>) -> ApiResult<Json<Graph>> {
     let nodes = job_views(&state).await.map_err(store_err)?;
-    let ids: std::collections::HashSet<&str> =
-        nodes.iter().map(|n| n.job.id.as_str()).collect();
+    let ids: std::collections::HashSet<&str> = nodes.iter().map(|n| n.job.id.as_str()).collect();
     let edges = nodes
         .iter()
         .flat_map(|n| {

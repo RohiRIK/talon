@@ -9,8 +9,8 @@ use std::convert::Infallible;
 
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
-use futures::stream::Stream;
 use futures::StreamExt;
+use futures::stream::Stream;
 use tokio_stream::wrappers::BroadcastStream;
 
 use super::WebState;

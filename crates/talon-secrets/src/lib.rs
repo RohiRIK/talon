@@ -75,7 +75,9 @@ pub trait SecretProvider: Send + Sync {
 
     /// List metadata for everything this provider holds. Providers that
     /// cannot enumerate (e.g. env) return an empty list.
-    fn list(&self) -> Pin<Box<dyn Future<Output = Result<Vec<SecretMeta>, SecretError>> + Send + '_>>;
+    fn list(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<SecretMeta>, SecretError>> + Send + '_>>;
 }
 
 #[cfg(test)]

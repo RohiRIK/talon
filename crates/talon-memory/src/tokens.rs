@@ -127,8 +127,7 @@ impl TokenStore {
                     "UPDATE api_tokens SET last_used = ?1 WHERE name = ?2",
                     params![now, name],
                 )?;
-                let role = TokenRole::from_str(&role)
-                    .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                let role = TokenRole::from_str(&role).map_err(|_| rusqlite::Error::InvalidQuery)?;
                 Ok(Some((name, role)))
             } else {
                 Ok(None)
@@ -149,8 +148,7 @@ impl TokenStore {
                 let role: String = row.get(1)?;
                 Ok(TokenMeta {
                     name: row.get(0)?,
-                    role: TokenRole::from_str(&role)
-                        .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                    role: TokenRole::from_str(&role).map_err(|_| rusqlite::Error::InvalidQuery)?,
                     created_at: row.get(2)?,
                     last_used: row.get(3)?,
                     revoked: row.get::<_, Option<String>>(4)?.is_some(),
@@ -250,7 +248,10 @@ mod tests {
     #[tokio::test]
     async fn list_never_contains_raw_or_hash() {
         let s = store().await;
-        let raw = s.create("leakcheck", TokenRole::Viewer).await.expect("create");
+        let raw = s
+            .create("leakcheck", TokenRole::Viewer)
+            .await
+            .expect("create");
         let hash = hash_token(&raw);
 
         let json = serde_json::to_string(&s.list().await.expect("list")).expect("json");

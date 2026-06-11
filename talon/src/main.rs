@@ -297,7 +297,8 @@ async fn cmd_init() -> Result<()> {
 fn ensure_api_token(config_path: &std::path::Path) -> Result<bool> {
     let existing = std::fs::read_to_string(config_path)
         .with_context(|| format!("failed to read {}", config_path.display()))?;
-    let mut doc: toml::Table = toml::from_str(&existing).context("config.toml is not valid TOML")?;
+    let mut doc: toml::Table =
+        toml::from_str(&existing).context("config.toml is not valid TOML")?;
 
     let gateway = doc
         .entry("gateway")
@@ -969,7 +970,9 @@ fn build_secret_resolver(db: Option<Arc<Database>>) -> Arc<talon_secrets::Secret
                 }
             }
             Ok(false) => {
-                tracing::debug!("no vault master key — builtin secrets disabled (run `talon init`)");
+                tracing::debug!(
+                    "no vault master key — builtin secrets disabled (run `talon init`)"
+                );
             }
             Err(e) => tracing::warn!("vault state check failed: {e}"),
         }

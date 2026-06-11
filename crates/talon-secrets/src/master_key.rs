@@ -297,7 +297,9 @@ impl<'a> MasterKeyStore<'a> {
         let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&kek));
         let plaintext = cipher
             .decrypt(Nonce::from_slice(nonce), ciphertext)
-            .map_err(|_| SecretError::Crypto("wrong passphrase or corrupt recovery blob".to_string()))?;
+            .map_err(|_| {
+                SecretError::Crypto("wrong passphrase or corrupt recovery blob".to_string())
+            })?;
 
         key_from_slice(&plaintext, "recovery blob")
     }
@@ -387,10 +389,8 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn temp_home(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "talon-secrets-test-{tag}-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("talon-secrets-test-{tag}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("temp home");
         dir
     }

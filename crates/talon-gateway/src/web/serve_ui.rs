@@ -77,7 +77,12 @@ mod tests {
     async fn index_served_at_root_and_unknown_paths() {
         for uri in ["/", "/some/spa/route"] {
             let resp = router()
-                .oneshot(Request::builder().uri(uri).body(Body::empty()).expect("req"))
+                .oneshot(
+                    Request::builder()
+                        .uri(uri)
+                        .body(Body::empty())
+                        .expect("req"),
+                )
                 .await
                 .expect("response");
             assert_eq!(resp.status(), StatusCode::OK, "{uri}");

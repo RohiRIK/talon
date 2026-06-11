@@ -67,9 +67,10 @@ impl SecretResolver {
             let value = match seen.get(&sref.raw) {
                 Some(v) => v.clone(),
                 None => {
-                    let provider = self.providers.get(sref.scheme.as_str()).ok_or_else(|| {
-                        SecretError::UnknownScheme(sref.scheme.clone())
-                    })?;
+                    let provider = self
+                        .providers
+                        .get(sref.scheme.as_str())
+                        .ok_or_else(|| SecretError::UnknownScheme(sref.scheme.clone()))?;
                     let v = provider.get(&sref).await?;
                     seen.insert(sref.raw.clone(), v.clone());
                     values.push((sref.display_name().to_string(), v.clone()));
