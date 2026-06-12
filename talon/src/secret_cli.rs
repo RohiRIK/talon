@@ -49,10 +49,13 @@ pub async fn run(action: SecretAction, talon_home: PathBuf) -> Result<()> {
     let keychain = OsKeychain;
     let key_store = MasterKeyStore::new(&talon_home, &keychain);
 
-    if !key_store.is_bootstrapped()? {
+    // Criterion 2 headless path: TALON_MASTER_KEY alone is a valid unlock
+    // source even when no wrapped copy exists on this machine.
+    if !key_store.is_bootstrapped()? && std::env::var(ENV_VAR).is_err() {
         bail!(
             "no vault master key exists yet — run `talon init` to set up the vault \
-             (the key is created only after you choose an unlock credential)"
+             (the key is created only after you choose an unlock credential), \
+             or set {ENV_VAR} for headless use"
         );
     }
 

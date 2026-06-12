@@ -967,9 +967,11 @@ async fn build_secret_resolver(
     if let (Some(db), Ok(home)) = (db, talon_home()) {
         let keychain = OsKeychain;
         let key_store = MasterKeyStore::new(&home, &keychain);
+        let env_value = std::env::var(talon_secrets::ENV_VAR).ok();
         match key_store.is_bootstrapped() {
-            Ok(true) => {
-                let env_value = std::env::var(talon_secrets::ENV_VAR).ok();
+            // Criterion 2 headless path: TALON_MASTER_KEY alone is a valid
+            // unlock source even when no wrapped copy exists on this machine.
+            Ok(bootstrapped) if bootstrapped || env_value.is_some() => {
                 match key_store.unlock(env_value.as_deref(), None) {
                     Ok(master) => {
                         // One vault, two consumers: the resolver (job refs)
@@ -985,9 +987,9 @@ async fn build_secret_resolver(
                     ),
                 }
             }
-            Ok(false) => {
+            Ok(_) => {
                 tracing::debug!(
-                    "no vault master key — builtin secrets disabled (run `talon init`)"
+                    "no vault master key — builtin secrets disabled (run `talon init` or set TALON_MASTER_KEY)"
                 );
             }
             Err(e) => tracing::warn!("vault state check failed: {e}"),
