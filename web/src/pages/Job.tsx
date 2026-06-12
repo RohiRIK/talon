@@ -12,13 +12,22 @@ function RunRow({ run }: { run: CronRun }) {
         <td>
           <span className={`badge ${run.status}`}>{run.status}</span>
         </td>
+        <td>
+          {/* Provenance (criterion 30): what fired the run + retry attempt. */}
+          <span className="badge">{run.fired_by ?? "cron"}</span>
+          {(run.attempt ?? 1) > 1 && (
+            <span className="badge" title="retry attempt">
+              attempt {run.attempt}
+            </span>
+          )}
+        </td>
         <td>{run.started_at}</td>
         <td>{run.finished_at ?? "—"}</td>
         <td className="muted">{humanizeSince(run.started_at)}</td>
       </tr>
       {open && (
         <tr>
-          <td colSpan={4}>
+          <td colSpan={5}>
             {run.error && (
               <>
                 <div className="muted">error</div>
@@ -186,6 +195,7 @@ export function JobDetail({ id }: { id: string }) {
           <thead>
             <tr>
               <th>status</th>
+              <th>fired by</th>
               <th>started</th>
               <th>finished</th>
               <th></th>

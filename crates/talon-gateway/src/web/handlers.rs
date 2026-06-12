@@ -163,6 +163,10 @@ pub struct PatchJob {
     /// Graph-editor edits (criteria 21–22): replaces the dependency list.
     /// Server re-validates — unknown ids, self-reference, and cycles → 422.
     pub context_from: Option<Vec<String>>,
+    /// Retry policy (criterion 28); negative values clamp to 0.
+    pub retry_max: Option<i64>,
+    /// Error-handler job id (criterion 29); empty string clears it.
+    pub on_failure: Option<String>,
 }
 
 pub async fn patch_job(
@@ -181,6 +185,31 @@ pub async fn patch_job(
             .set_context_from(&id, context_from)
             .await
             .map_err(store_err)?;
+        changed = true;
+    }
+
+    if req.retry_max.is_some() || req.on_failure.is_some() {
+        let current = state
+            .cron
+            .get(&id)
+            .await
+            .map_err(store_err)?
+            .ok_or_else(|| err(StatusCode::NOT_FOUND, format!("no job {id}")))?;
+        let retry_max = req.retry_max.unwrap_or(current.retry_max);
+        let on_failure = match req.on_failure {
+            None => current.on_failure,
+            Some(s) if s.is_empty() => None,
+            Some(s) => Some(s),
+        };
+        // Store-level validation (self-reference, unknown handler) → 422.
+        state
+            .cron
+            .set_reliability(&id, retry_max, on_failure)
+            .await
+            .map_err(|e| match e {
+                talon_memory::MemoryError::Cron(msg) => err(StatusCode::UNPROCESSABLE_ENTITY, msg),
+                other => store_err(other),
+            })?;
         changed = true;
     }
 

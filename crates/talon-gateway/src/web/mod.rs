@@ -1493,6 +1493,81 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::NOT_FOUND, "criterion 25");
     }
 
+    // ── Reliability (criteria 28–29 API surface) ────────────────────────────
+
+    #[tokio::test]
+    async fn patch_reliability_validates_and_roundtrips() {
+        let state = make_state().await;
+        let a = state
+            .cron
+            .create(CronJob::new(
+                "a",
+                CronSchedule::Cron("0 0 * * *".into()),
+                "s",
+            ))
+            .await
+            .expect("a");
+        let b = state
+            .cron
+            .create(CronJob::new(
+                "b",
+                CronSchedule::Cron("0 1 * * *".into()),
+                "s",
+            ))
+            .await
+            .expect("b");
+
+        // Set retry policy + handler.
+        let resp = app(state.clone())
+            .oneshot(authed(
+                "PATCH",
+                &format!("/api/v1/jobs/{}", a.id),
+                Some(&format!(r#"{{"retry_max":2,"on_failure":"{}"}}"#, b.id)),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let patched = body_json(resp).await;
+        assert_eq!(patched["retry_max"], 2);
+        assert_eq!(patched["on_failure"], serde_json::json!(b.id));
+
+        // Self-reference → 422.
+        let resp = app(state.clone())
+            .oneshot(authed(
+                "PATCH",
+                &format!("/api/v1/jobs/{}", a.id),
+                Some(&format!(r#"{{"on_failure":"{}"}}"#, a.id)),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        // Unknown handler → 422.
+        let resp = app(state.clone())
+            .oneshot(authed(
+                "PATCH",
+                &format!("/api/v1/jobs/{}", a.id),
+                Some(r#"{"on_failure":"ghost"}"#),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        // Empty string clears the handler.
+        let resp = app(state)
+            .oneshot(authed(
+                "PATCH",
+                &format!("/api/v1/jobs/{}", a.id),
+                Some(r#"{"on_failure":""}"#),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let patched = body_json(resp).await;
+        assert!(patched["on_failure"].is_null());
+        assert_eq!(patched["retry_max"], 2, "retry policy untouched");
+    }
+
     // ── token_eq ────────────────────────────────────────────────────────────
 
     #[test]

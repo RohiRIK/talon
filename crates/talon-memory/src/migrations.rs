@@ -13,6 +13,7 @@ static MIGRATIONS: &[(i64, &str)] = &[
     (6, include_str!("schema_secrets.sql")),
     (7, include_str!("schema_tokens.sql")),
     (8, include_str!("schema_hooks.sql")),
+    (9, include_str!("schema_reliability.sql")),
 ];
 
 /// Run all pending migrations on an open connection.
@@ -116,7 +117,7 @@ mod tests {
                 r.get(0)
             })
             .expect("query");
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
     }
 
     #[test]
@@ -152,7 +153,7 @@ mod tests {
                 r.get(0)
             })
             .expect("version");
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
 
         // cron_runs exists and is empty; existing job survived.
         let runs: i64 = conn
@@ -203,7 +204,7 @@ mod tests {
                 r.get(0)
             })
             .expect("version");
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
 
         let secrets: i64 = conn
             .query_row("SELECT COUNT(*) FROM secrets", [], |r| r.get(0))

@@ -27,6 +27,10 @@ export interface CronRun {
   output: string | null
   error: string | null
   events_json: string | null
+  /** What fired the run: cron | manual | webhook | failure (handler). */
+  fired_by?: string
+  /** Attempt number within a retry chain; first attempt = 1. */
+  attempt?: number
 }
 
 export interface JobView {
@@ -47,6 +51,10 @@ export interface JobView {
   next_run: string | null
   created_at: string
   latest_run: CronRun | null
+  /** Retry policy: failed attempts retried up to this many times. */
+  retry_max?: number
+  /** Error-handler job id, triggered when the final attempt fails. */
+  on_failure?: string | null
 }
 
 export interface GraphEdge {

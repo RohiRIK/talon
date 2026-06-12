@@ -148,17 +148,14 @@ impl SchedulerHandle {
     }
 
     /// Webhook delivery (criterion 26): immediate run with the request body
-    /// exposed to the job as context. Returns `false` if the scheduler is gone.
-    pub async fn trigger_webhook(
-        &self,
-        job_id: impl Into<String>,
-        payload: Option<String>,
-    ) -> bool {
+    /// exposed to the job as a fenced context block. Returns `false` if the
+    /// scheduler is gone.
+    pub async fn trigger_webhook(&self, job_id: impl Into<String>, body: Option<String>) -> bool {
         self.tx
             .send(SchedulerCmd::Trigger {
                 job_id: job_id.into(),
                 fired_by: "webhook",
-                payload,
+                payload: body.map(|b| format!("## Webhook payload\n```json\n{b}\n```")),
             })
             .await
             .is_ok()
@@ -319,11 +316,10 @@ impl Scheduler {
                 return;
             }
         };
+        // The payload arrives pre-formatted by the sender (webhook block,
+        // failure context) — append as-is under the job's own prompt.
         if let Some(payload) = payload {
-            job.prompt = format!(
-                "{}\n\n## Webhook payload\n```json\n{payload}\n```",
-                job.prompt
-            );
+            job.prompt = format!("{}\n\n{payload}", job.prompt);
         }
         self.spawn_job(job, Utc::now(), tracker, false, fired_by)
             .await;
@@ -354,54 +350,106 @@ impl Scheduler {
         let events = self.events.clone();
         let runner = Arc::clone(&self.runner);
         let inflight = Arc::clone(&self.inflight);
+        let cmd_tx = self.cmd_tx.clone();
         let job_id = job.id.clone();
         let job_name = job.name.clone().unwrap_or_else(|| job.id.clone());
 
         tracker.spawn(async move {
             tracing::info!(job = %job_name, manual = !advance, "cron job firing");
 
-            // Open the history row before the agent starts; a process crash
-            // leaves it `running`, which is itself useful forensic signal.
-            let run_id = match &runs {
-                Some(rs) => match rs.insert_running_as(&job_id, now, fired_by, 1).await {
-                    Ok(run) => Some(run.id),
-                    Err(e) => {
-                        tracing::error!(job = %job_name, error = %e, "cron_runs insert failed");
-                        None
+            // Retry chain (criterion 28): attempt 1 + up to retry_max retries
+            // with exponential backoff. retry_max = 0 keeps the historical
+            // single-attempt behavior byte-identical.
+            let max_attempts = 1 + job.retry_max.max(0);
+            let mut attempt: i64 = 1;
+            let outcome = loop {
+                // Open the history row before the agent starts; a process
+                // crash leaves it `running` — useful forensic signal.
+                let run_id = match &runs {
+                    Some(rs) => match rs.insert_running_as(&job_id, now, fired_by, attempt).await {
+                        Ok(run) => Some(run.id),
+                        Err(e) => {
+                            tracing::error!(job = %job_name, error = %e, "cron_runs insert failed");
+                            None
+                        }
+                    },
+                    None => None,
+                };
+
+                if let (Some(ev), Some(run_id)) = (&events, &run_id) {
+                    let _ = ev.send(RunEvent::RunStarted {
+                        job_id: job_id.clone(),
+                        run_id: run_id.clone(),
+                    });
+                }
+
+                // Correlation span (criterion 17): everything the runner logs
+                // — agent events, tool calls, LLM retries — carries both ids.
+                let run_span = tracing::info_span!(
+                    "run",
+                    job_id = %job_id,
+                    run_id = %run_id.as_deref().unwrap_or("none"),
+                );
+
+                metrics::gauge!("talon_active_jobs").increment(1);
+                let started = std::time::Instant::now();
+                let outcome = {
+                    use tracing::Instrument as _;
+                    runner.run(job.clone()).instrument(run_span).await
+                };
+                metrics::histogram!("talon_run_duration_seconds")
+                    .record(started.elapsed().as_secs_f64());
+                metrics::gauge!("talon_active_jobs").decrement(1);
+                metrics::counter!(
+                    "talon_runs_total",
+                    "status" => if outcome.success { "success" } else { "failure" },
+                )
+                .increment(1);
+
+                if let (Some(rs), Some(run_id)) = (&runs, run_id) {
+                    let status = if outcome.success {
+                        RunStatus::Success
+                    } else {
+                        RunStatus::Failure
+                    };
+                    if let Err(e) = rs
+                        .finalize(
+                            &run_id,
+                            status,
+                            outcome.output.clone(),
+                            outcome.error.clone(),
+                            outcome.events_json.clone(),
+                        )
+                        .await
+                    {
+                        tracing::error!(job = %job_name, error = %e, "cron_runs finalize failed");
                     }
-                },
-                None => None,
+                    if let Some(ev) = &events {
+                        let _ = ev.send(RunEvent::RunFinished {
+                            job_id: job_id.clone(),
+                            run_id,
+                            status,
+                        });
+                    }
+                }
+
+                if outcome.success || attempt >= max_attempts {
+                    break outcome;
+                }
+                // Exponential backoff with jitter: 1s, 2s, 4s … capped at 60s.
+                let base = 1u64 << (attempt.min(6) - 1) as u32;
+                let jitter_ms = u64::from(uuid::Uuid::new_v4().as_u128() as u16) % 500;
+                let delay = Duration::from_secs(base.min(60)) + Duration::from_millis(jitter_ms);
+                tracing::warn!(
+                    job = %job_name,
+                    attempt,
+                    max_attempts,
+                    delay_secs = delay.as_secs_f32(),
+                    "run failed — retrying"
+                );
+                tokio::time::sleep(delay).await;
+                attempt += 1;
             };
-
-            if let (Some(ev), Some(run_id)) = (&events, &run_id) {
-                let _ = ev.send(RunEvent::RunStarted {
-                    job_id: job_id.clone(),
-                    run_id: run_id.clone(),
-                });
-            }
-
-            // Correlation span (criterion 17): everything the runner logs —
-            // agent events, tool calls, LLM retries — carries both ids.
-            let run_span = tracing::info_span!(
-                "run",
-                job_id = %job_id,
-                run_id = %run_id.as_deref().unwrap_or("none"),
-            );
-
-            metrics::gauge!("talon_active_jobs").increment(1);
-            let started = std::time::Instant::now();
-            let outcome = {
-                use tracing::Instrument as _;
-                runner.run(job).instrument(run_span).await
-            };
-            metrics::histogram!("talon_run_duration_seconds")
-                .record(started.elapsed().as_secs_f64());
-            metrics::gauge!("talon_active_jobs").decrement(1);
-            metrics::counter!(
-                "talon_runs_total",
-                "status" => if outcome.success { "success" } else { "failure" },
-            )
-            .increment(1);
 
             // Advance the schedule from the fire instant (`now`), not from
             // whenever the agent finished — keeps a slow job from dragging
@@ -410,31 +458,29 @@ impl Scheduler {
                 tracing::error!(job = %job_name, error = %e, "mark_run failed");
             }
 
-            if let (Some(rs), Some(run_id)) = (&runs, run_id) {
-                let status = if outcome.success {
-                    RunStatus::Success
-                } else {
-                    RunStatus::Failure
-                };
-                if let Err(e) = rs
-                    .finalize(
-                        &run_id,
-                        status,
-                        outcome.output,
-                        outcome.error,
-                        outcome.events_json,
-                    )
-                    .await
-                {
-                    tracing::error!(job = %job_name, error = %e, "cron_runs finalize failed");
-                }
-                if let Some(ev) = &events {
-                    let _ = ev.send(RunEvent::RunFinished {
-                        job_id: job_id.clone(),
-                        run_id,
-                        status,
-                    });
-                }
+            // Error handler (criterion 29): fire once after the FINAL failed
+            // attempt. Handler runs carry fired_by = "failure" and this guard
+            // skips on_failure for them — handlers never cascade.
+            if !outcome.success
+                && fired_by != "failure"
+                && let Some(handler_id) = &job.on_failure
+            {
+                let context = format!(
+                    "## Failure context\nsource job: {job_id} ({job_name})\nerror: {}",
+                    outcome.error.as_deref().unwrap_or("(no error message)")
+                );
+                tracing::warn!(
+                    job = %job_name,
+                    handler = %handler_id,
+                    "final attempt failed — triggering on_failure handler"
+                );
+                let _ = cmd_tx
+                    .send(SchedulerCmd::Trigger {
+                        job_id: handler_id.clone(),
+                        fired_by: "failure",
+                        payload: Some(context),
+                    })
+                    .await;
             }
 
             inflight.lock().await.remove(&job_id);
@@ -537,6 +583,187 @@ mod tests {
         fn make_writer(&'a self) -> Self::Writer {
             self.clone()
         }
+    }
+
+    /// Fails until the `succeed_on`-th invocation (criterion 28).
+    struct FlakyRunner {
+        calls: Arc<AtomicUsize>,
+        succeed_on: usize,
+    }
+
+    impl JobRunner for FlakyRunner {
+        fn run(&self, _job: CronJob) -> Pin<Box<dyn Future<Output = JobOutcome> + Send + '_>> {
+            let calls = Arc::clone(&self.calls);
+            let succeed_on = self.succeed_on;
+            Box::pin(async move {
+                let n = calls.fetch_add(1, Ordering::SeqCst) + 1;
+                if n >= succeed_on {
+                    JobOutcome::ok(Some("recovered".to_string()))
+                } else {
+                    JobOutcome::failed_with(format!("flaky failure #{n}"))
+                }
+            })
+        }
+    }
+
+    /// Always fails, recording which jobs it ran (criterion 29).
+    struct RecordingFailRunner {
+        seen: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl JobRunner for RecordingFailRunner {
+        fn run(&self, job: CronJob) -> Pin<Box<dyn Future<Output = JobOutcome> + Send + '_>> {
+            let seen = Arc::clone(&self.seen);
+            Box::pin(async move {
+                seen.lock().expect("lock").push(job.id.clone());
+                JobOutcome::failed_with("always fails")
+            })
+        }
+    }
+
+    /// Criterion 28: retry_max = N retries failed attempts with each attempt
+    /// in its own row; the first success stops the chain.
+    #[tokio::test(start_paused = true)]
+    async fn retry_chain_records_attempts_until_success() {
+        let (cron, runs) = stores().await;
+        let job = cron
+            .create(
+                CronJob::new("p", CronSchedule::Cron("0 0 * * *".into()), "s").with_retry_max(3),
+            )
+            .await
+            .expect("job");
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let scheduler = Scheduler::new(
+            cron.clone(),
+            Arc::new(FlakyRunner {
+                calls: Arc::clone(&calls),
+                succeed_on: 3,
+            }),
+        )
+        .with_run_store(runs.clone());
+        let tracker = TaskTracker::new();
+        scheduler.dispatch_trigger(&job.id, &tracker).await;
+        drain(tracker).await;
+
+        assert_eq!(calls.load(Ordering::SeqCst), 3, "stopped on first success");
+        let rows = runs.list_for_job(&job.id, 10).await.expect("rows");
+        assert_eq!(rows.len(), 3, "one row per attempt");
+        // Newest first: final attempt succeeded, earlier ones failed.
+        assert_eq!(rows[0].attempt, 3);
+        assert_eq!(rows[0].status, RunStatus::Success);
+        assert_eq!(rows[2].attempt, 1);
+        assert_eq!(rows[2].status, RunStatus::Failure);
+        assert!(rows.iter().all(|r| r.fired_by == "manual"));
+    }
+
+    /// retry_max = 0 keeps the historical single-attempt behavior.
+    #[tokio::test]
+    async fn no_retry_by_default() {
+        let (cron, runs) = stores().await;
+        let job = cron
+            .create(CronJob::new(
+                "p",
+                CronSchedule::Cron("0 0 * * *".into()),
+                "s",
+            ))
+            .await
+            .expect("job");
+
+        let scheduler =
+            Scheduler::new(cron.clone(), Arc::new(FailingRunner)).with_run_store(runs.clone());
+        let tracker = TaskTracker::new();
+        scheduler.dispatch_trigger(&job.id, &tracker).await;
+        drain(tracker).await;
+
+        let rows = runs.list_for_job(&job.id, 10).await.expect("rows");
+        assert_eq!(rows.len(), 1, "single attempt");
+        assert_eq!(rows[0].status, RunStatus::Failure);
+    }
+
+    /// Criterion 29: the on_failure handler fires once after the final failed
+    /// attempt, and a failing handler never cascades to its own handler.
+    #[tokio::test]
+    async fn failure_handler_fires_once_and_never_cascades() {
+        let (cron, runs) = stores().await;
+        // c <- b's handler, b <- a's handler; everything fails.
+        let c = cron
+            .create(CronJob::new(
+                "c",
+                CronSchedule::Cron("0 0 * * *".into()),
+                "s",
+            ))
+            .await
+            .expect("c");
+        let b = cron
+            .create(
+                CronJob::new("b", CronSchedule::Cron("0 0 * * *".into()), "s")
+                    .with_on_failure(Some(c.id.clone())),
+            )
+            .await
+            .expect("b");
+        let a = cron
+            .create(
+                CronJob::new("a", CronSchedule::Cron("0 0 * * *".into()), "s")
+                    .with_on_failure(Some(b.id.clone())),
+            )
+            .await
+            .expect("a");
+
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let scheduler = Arc::new(
+            Scheduler::new(
+                cron.clone(),
+                Arc::new(RecordingFailRunner {
+                    seen: Arc::clone(&seen),
+                }),
+            )
+            .with_run_store(runs.clone())
+            .with_tick(Duration::from_secs(3600)),
+        );
+
+        // The handler trigger flows through the command channel, so the tick
+        // loop must be live.
+        let cancel = CancellationToken::new();
+        let tracker = TaskTracker::new();
+        let loop_sched = Arc::clone(&scheduler);
+        let loop_cancel = cancel.clone();
+        let loop_tracker = tracker.clone();
+        let run_loop = tokio::spawn(async move { loop_sched.run(loop_cancel, loop_tracker).await });
+
+        assert!(scheduler.handle().trigger(&a.id).await);
+        // Wait until the handler (b) has run; c must never run.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if seen.lock().expect("lock").len() >= 2 {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "handler did not fire in time: {:?}",
+                seen.lock().expect("lock")
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        // Give a would-be cascade a moment to (incorrectly) appear.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        cancel.cancel();
+        let _ = run_loop.await;
+        drain(tracker).await;
+
+        let seen = seen.lock().expect("lock").clone();
+        assert_eq!(
+            seen,
+            vec![a.id.clone(), b.id.clone()],
+            "a then handler b, never c"
+        );
+
+        let b_rows = runs.list_for_job(&b.id, 10).await.expect("rows");
+        assert_eq!(b_rows[0].fired_by, "failure", "handler provenance");
+        assert!(
+            runs.list_for_job(&c.id, 10).await.expect("rows").is_empty(),
+            "no cascade"
+        );
     }
 
     /// A runner that emits a log line from inside the run.
