@@ -1259,6 +1259,94 @@ mod tests {
         );
     }
 
+    // ── Graph v2 edge edits (criteria 21–22) ────────────────────────────────
+
+    #[tokio::test]
+    async fn patch_context_from_adds_edge_and_rejects_bad_edits() {
+        let state = make_state().await;
+        let a = state
+            .cron
+            .create(CronJob::new(
+                "a",
+                CronSchedule::Cron("0 0 * * *".into()),
+                "s",
+            ))
+            .await
+            .expect("a");
+        let b = state
+            .cron
+            .create(CronJob::new(
+                "b",
+                CronSchedule::Cron("0 1 * * *".into()),
+                "s",
+            ))
+            .await
+            .expect("b");
+
+        // Add edge a -> b.
+        let resp = app(state.clone())
+            .oneshot(authed(
+                "PATCH",
+                &format!("/api/v1/jobs/{}", b.id),
+                Some(&format!(r#"{{"context_from":["{}"]}}"#, a.id)),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let patched = body_json(resp).await;
+        assert_eq!(patched["context_from"][0], serde_json::json!(a.id));
+
+        // Unknown dependency → 422.
+        let resp = app(state.clone())
+            .oneshot(authed(
+                "PATCH",
+                &format!("/api/v1/jobs/{}", b.id),
+                Some(r#"{"context_from":["ghost"]}"#),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        // Self-reference → 422.
+        let resp = app(state.clone())
+            .oneshot(authed(
+                "PATCH",
+                &format!("/api/v1/jobs/{}", b.id),
+                Some(&format!(r#"{{"context_from":["{}"]}}"#, b.id)),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        // Cycle (b -> a while a -> b exists) → 422, edge unchanged.
+        let resp = app(state.clone())
+            .oneshot(authed(
+                "PATCH",
+                &format!("/api/v1/jobs/{}", a.id),
+                Some(&format!(r#"{{"context_from":["{}"]}}"#, b.id)),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = body_json(resp).await;
+        assert!(body["error"].as_str().expect("error").contains("cycle"));
+        let a_now = state.cron.get(&a.id).await.expect("get").expect("job");
+        assert!(a_now.context_from.is_empty(), "rejected edit not persisted");
+
+        // Edge removal: empty list.
+        let resp = app(state)
+            .oneshot(authed(
+                "PATCH",
+                &format!("/api/v1/jobs/{}", b.id),
+                Some(r#"{"context_from":[]}"#),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let patched = body_json(resp).await;
+        assert_eq!(patched["context_from"].as_array().expect("arr").len(), 0);
+    }
+
     // ── token_eq ────────────────────────────────────────────────────────────
 
     #[test]

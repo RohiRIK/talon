@@ -38,7 +38,12 @@ export function toneFor(status: RunStatus | undefined): NodeTone {
 
 /// Layered layout: depth = longest path from a root (resolvable parents
 /// only). Cycles fall back to depth 0 — every node always gets a position.
-export function toFlow(graph: GraphResponse): {
+/// `savedPositions` (criterion 23, localStorage) override the computed
+/// layout per node; auto-layout = call without them.
+export function toFlow(
+  graph: GraphResponse,
+  savedPositions?: Record<string, { x: number; y: number }>,
+): {
   nodes: FlowNode[]
   edges: FlowEdge[]
 } {
@@ -72,7 +77,7 @@ export function toFlow(graph: GraphResponse): {
     perDepthCount.set(d, row + 1)
     return {
       id: job.id,
-      position: { x: d * 260, y: row * 110 },
+      position: savedPositions?.[job.id] ?? { x: d * 260, y: row * 110 },
       data: {
         label: jobLabel(job),
         tone: toneFor(job.latest_run?.status),

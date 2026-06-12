@@ -350,6 +350,35 @@ impl CronStore {
         Ok(())
     }
 
+    /// Replace a job's `context_from` dependency list (graph-editor edits).
+    /// Validation (ids exist, acyclic) is the caller's job — the store only
+    /// persists.
+    pub async fn set_context_from(
+        &self,
+        id: &str,
+        context_from: Vec<String>,
+    ) -> Result<(), MemoryError> {
+        self.get(id)
+            .await?
+            .ok_or_else(|| MemoryError::NotFound(format!("cron job {id}")))?;
+
+        let json = serde_json::to_string(&context_from)?;
+        let id = id.to_string();
+        self.db
+            .pool()
+            .get()
+            .await?
+            .interact(move |conn| -> rusqlite::Result<()> {
+                conn.execute(
+                    "UPDATE cron_jobs SET context_from = ?2 WHERE id = ?1",
+                    params![id, json],
+                )?;
+                Ok(())
+            })
+            .await??;
+        Ok(())
+    }
+
     /// Delete a job. Returns `true` if a row was removed.
     pub async fn delete(&self, id: &str) -> Result<bool, MemoryError> {
         let id = id.to_string();

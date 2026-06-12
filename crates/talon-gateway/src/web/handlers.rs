@@ -160,6 +160,9 @@ pub async fn get_job(
 #[derive(Debug, Deserialize)]
 pub struct PatchJob {
     pub enabled: Option<bool>,
+    /// Graph-editor edits (criteria 21–22): replaces the dependency list.
+    /// Server re-validates — unknown ids, self-reference, and cycles → 422.
+    pub context_from: Option<Vec<String>>,
 }
 
 pub async fn patch_job(
@@ -167,17 +170,116 @@ pub async fn patch_job(
     Path(id): Path<String>,
     Json(req): Json<PatchJob>,
 ) -> ApiResult<Json<JobView>> {
+    let mut changed = false;
+
+    if let Some(context_from) = req.context_from {
+        let jobs = state.cron.list().await.map_err(store_err)?;
+        validate_context_edit(&id, &context_from, &jobs)
+            .map_err(|reason| err(StatusCode::UNPROCESSABLE_ENTITY, reason))?;
+        state
+            .cron
+            .set_context_from(&id, context_from)
+            .await
+            .map_err(store_err)?;
+        changed = true;
+    }
+
     if let Some(enabled) = req.enabled {
         state
             .cron
             .set_enabled(&id, enabled)
             .await
             .map_err(store_err)?;
+        changed = true;
+    }
+
+    if changed {
         let _ = state
             .events
             .send(RunEvent::JobChanged { job_id: id.clone() });
     }
     get_job(State(state), Path(id)).await
+}
+
+/// Validate a `context_from` replacement against the whole job graph
+/// (criterion 22): every referenced id exists, no self-reference, and the
+/// graph with this edit applied stays acyclic (Kahn — leftovers are the
+/// cycle, named in the error).
+fn validate_context_edit(
+    job_id: &str,
+    new_deps: &[String],
+    jobs: &[talon_memory::CronJob],
+) -> Result<(), String> {
+    use std::collections::{HashMap, HashSet};
+
+    let ids: HashSet<&str> = jobs.iter().map(|j| j.id.as_str()).collect();
+    if !ids.contains(job_id) {
+        return Err(format!("no job {job_id}"));
+    }
+    for dep in new_deps {
+        if dep == job_id {
+            return Err("a job cannot depend on itself".to_string());
+        }
+        if !ids.contains(dep.as_str()) {
+            return Err(format!("unknown dependency: {dep}"));
+        }
+    }
+
+    // Graph with the edit applied: edge dep -> job.
+    let deps_of = |j: &talon_memory::CronJob| -> Vec<String> {
+        if j.id == job_id {
+            new_deps.to_vec()
+        } else {
+            j.context_from.clone()
+        }
+    };
+
+    let mut indegree: HashMap<&str, usize> = jobs.iter().map(|j| (j.id.as_str(), 0)).collect();
+    let mut edges: HashMap<String, Vec<String>> = HashMap::new();
+    for job in jobs {
+        for dep in deps_of(job) {
+            // Dangling deps on OTHER jobs are tolerated (legacy data) — they
+            // can never form a cycle.
+            if ids.contains(dep.as_str()) {
+                *indegree.entry(job.id.as_str()).or_insert(0) += 1;
+                edges.entry(dep).or_default().push(job.id.clone());
+            }
+        }
+    }
+
+    let mut ready: Vec<&str> = indegree
+        .iter()
+        .filter(|(_, deg)| **deg == 0)
+        .map(|(id, _)| *id)
+        .collect();
+    let mut visited = 0usize;
+    while let Some(node) = ready.pop() {
+        visited += 1;
+        if let Some(children) = edges.get(node) {
+            for child in children {
+                if let Some(deg) = indegree.get_mut(child.as_str()) {
+                    *deg -= 1;
+                    if *deg == 0 {
+                        // SAFETY of lifetime: child borrows from `edges`,
+                        // which outlives the loop.
+                        if let Some(j) = jobs.iter().find(|j| j.id == *child) {
+                            ready.push(j.id.as_str());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if visited < jobs.len() {
+        let stuck: Vec<&str> = indegree
+            .iter()
+            .filter(|(_, deg)| **deg > 0)
+            .map(|(id, _)| *id)
+            .collect();
+        return Err(format!("dependency cycle involving: {}", stuck.join(", ")));
+    }
+    Ok(())
 }
 
 pub async fn delete_job(

@@ -206,6 +206,40 @@ pre {
 
 .flow-node.running {
   border-color: var(--running);
+  animation: pulse-running 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-running {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(210, 153, 34, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(210, 153, 34, 0);
+  }
+}
+
+.log-tail {
+  max-height: 60vh;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.log-line.log-error strong {
+  color: var(--failure);
+}
+
+.log-line.log-warn strong {
+  color: var(--running);
+}
+
+.token-once {
+  border: 1px solid var(--running);
+  word-break: break-all;
+}
+
+.error {
+  color: var(--failure);
 }
 
 .token-gate {

@@ -91,4 +91,15 @@ describe("toFlow", () => {
     expect(nodes[0].position.x).toBe(0)
     expect(edges).toHaveLength(0)
   })
+
+  it("saved positions override the computed layout per node (criterion 23)", () => {
+    const graph: GraphResponse = {
+      nodes: [job("a"), job("b", ["a"])],
+      edges: [{ from: "a", to: "b" }],
+    }
+    const { nodes } = toFlow(graph, { a: { x: 999, y: 42 } })
+    expect(nodes.find((n) => n.id === "a")?.position).toEqual({ x: 999, y: 42 })
+    // b has no saved position — auto layout still applies.
+    expect(nodes.find((n) => n.id === "b")?.position.x).toBe(260)
+  })
 })

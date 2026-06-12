@@ -60,6 +60,8 @@ export const api = {
   createJob: (body: unknown) => request<JobView>("POST", "/jobs", body),
   setEnabled: (id: string, enabled: boolean) =>
     request<JobView>("PATCH", `/jobs/${id}`, { enabled }),
+  setContextFrom: (id: string, contextFrom: string[]) =>
+    request<JobView>("PATCH", `/jobs/${id}`, { context_from: contextFrom }),
   deleteJob: (id: string) => request<void>("DELETE", `/jobs/${id}`),
   trigger: (id: string) =>
     request<{ status: string }>("POST", `/jobs/${id}/trigger`),
