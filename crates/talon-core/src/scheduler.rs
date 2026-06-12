@@ -118,7 +118,14 @@ pub enum SchedulerCmd {
     /// Run a job immediately, exactly once, without touching its schedule —
     /// `next_run`, `run_count`, and `repeat` are unaffected; the attempt is
     /// recorded in `cron_runs` only (Jenkins "Build Now" semantics).
-    Trigger(String),
+    /// `fired_by` is the provenance recorded with the run (`manual`,
+    /// `webhook`); `payload` is appended to the job's prompt as a fenced
+    /// context block (webhook deliveries, criterion 26).
+    Trigger {
+        job_id: String,
+        fired_by: &'static str,
+        payload: Option<String>,
+    },
 }
 
 /// Cheap clonable handle for sending [`SchedulerCmd`]s into the tick loop.
@@ -131,7 +138,28 @@ impl SchedulerHandle {
     /// Request an immediate manual run. Returns `false` if the scheduler is gone.
     pub async fn trigger(&self, job_id: impl Into<String>) -> bool {
         self.tx
-            .send(SchedulerCmd::Trigger(job_id.into()))
+            .send(SchedulerCmd::Trigger {
+                job_id: job_id.into(),
+                fired_by: "manual",
+                payload: None,
+            })
+            .await
+            .is_ok()
+    }
+
+    /// Webhook delivery (criterion 26): immediate run with the request body
+    /// exposed to the job as context. Returns `false` if the scheduler is gone.
+    pub async fn trigger_webhook(
+        &self,
+        job_id: impl Into<String>,
+        payload: Option<String>,
+    ) -> bool {
+        self.tx
+            .send(SchedulerCmd::Trigger {
+                job_id: job_id.into(),
+                fired_by: "webhook",
+                payload,
+            })
             .await
             .is_ok()
     }
@@ -225,8 +253,8 @@ impl Scheduler {
                 }
                 cmd = Self::recv_cmd(&self.cmd_rx) => {
                     match cmd {
-                        Some(SchedulerCmd::Trigger(job_id)) => {
-                            self.dispatch_trigger(&job_id, &tracker).await;
+                        Some(SchedulerCmd::Trigger { job_id, fired_by, payload }) => {
+                            self.dispatch_trigger_as(&job_id, &tracker, fired_by, payload).await;
                         }
                         // Unreachable while `self.cmd_tx` is alive; guard anyway.
                         None => {}
@@ -258,7 +286,7 @@ impl Scheduler {
         };
 
         for job in due {
-            self.spawn_job(job, now, tracker, true).await;
+            self.spawn_job(job, now, tracker, true, "cron").await;
         }
     }
 
@@ -266,7 +294,21 @@ impl Scheduler {
     /// advanced: `mark_run` is skipped, so `next_run`/`run_count`/`repeat`
     /// are untouched; only `cron_runs` records the attempt.
     pub async fn dispatch_trigger(&self, job_id: &str, tracker: &TaskTracker) {
-        let job = match self.store.get(job_id).await {
+        self.dispatch_trigger_as(job_id, tracker, "manual", None)
+            .await;
+    }
+
+    /// Immediate run with provenance and an optional context payload
+    /// (criterion 26). The payload reaches the agent as a fenced block under
+    /// the job's own prompt — no trait or schema change.
+    pub async fn dispatch_trigger_as(
+        &self,
+        job_id: &str,
+        tracker: &TaskTracker,
+        fired_by: &'static str,
+        payload: Option<String>,
+    ) {
+        let mut job = match self.store.get(job_id).await {
             Ok(Some(job)) => job,
             Ok(None) => {
                 tracing::warn!(job = %job_id, "trigger for unknown job ignored");
@@ -277,18 +319,27 @@ impl Scheduler {
                 return;
             }
         };
-        self.spawn_job(job, Utc::now(), tracker, false).await;
+        if let Some(payload) = payload {
+            job.prompt = format!(
+                "{}\n\n## Webhook payload\n```json\n{payload}\n```",
+                job.prompt
+            );
+        }
+        self.spawn_job(job, Utc::now(), tracker, false, fired_by)
+            .await;
     }
 
     /// Spawn one job into `tracker` unless it is already in flight.
     /// `advance` distinguishes a scheduled fire (advance the schedule via
-    /// `mark_run`) from a manual trigger (history row only).
+    /// `mark_run`) from a manual trigger (history row only). `fired_by` is
+    /// recorded as the run's provenance (v8).
     async fn spawn_job(
         &self,
         job: CronJob,
         now: DateTime<Utc>,
         tracker: &TaskTracker,
         advance: bool,
+        fired_by: &'static str,
     ) {
         // Skip jobs already in flight to avoid double-dispatch across ticks.
         {
@@ -312,7 +363,7 @@ impl Scheduler {
             // Open the history row before the agent starts; a process crash
             // leaves it `running`, which is itself useful forensic signal.
             let run_id = match &runs {
-                Some(rs) => match rs.insert_running(&job_id, now).await {
+                Some(rs) => match rs.insert_running_as(&job_id, now, fired_by, 1).await {
                     Ok(run) => Some(run.id),
                     Err(e) => {
                         tracing::error!(job = %job_name, error = %e, "cron_runs insert failed");

@@ -14,6 +14,9 @@ talon-llm.path     = "../talon-llm"
 talon-memory.path  = "../talon-memory"
 talon-tools.path   = "../talon-tools"
 talon-secrets.path = "../talon-secrets"
+hmac.workspace     = true
+sha2.workspace     = true
+chrono.workspace   = true
 
 tokio.workspace        = true
 tokio-stream           = { workspace = true, features = ["sync"] }

@@ -73,6 +73,21 @@ pub struct CronRun {
     pub error: Option<String>,
     /// Compact JSON transcript of the run's `AgentEvent`s, for the run-detail view.
     pub events_json: Option<String>,
+    /// What fired this run: `cron` | `manual` | `webhook` (v8 provenance;
+    /// the column is `fired_by` because TRIGGER is a SQL keyword).
+    #[serde(default = "default_fired_by")]
+    pub fired_by: String,
+    /// Attempt number within a retry chain (Phase 9); first attempt = 1.
+    #[serde(default = "default_attempt")]
+    pub attempt: i64,
+}
+
+fn default_fired_by() -> String {
+    "cron".to_string()
+}
+
+fn default_attempt() -> i64 {
+    1
 }
 
 impl CronRun {
@@ -97,6 +112,8 @@ impl CronRun {
             output: row.get("output")?,
             error: row.get("error")?,
             events_json: row.get("events_json")?,
+            fired_by: row.get("fired_by")?,
+            attempt: row.get("attempt")?,
         })
     }
 }
@@ -118,6 +135,18 @@ impl RunStore {
         job_id: &str,
         started_at: DateTime<Utc>,
     ) -> Result<CronRun, MemoryError> {
+        self.insert_running_as(job_id, started_at, "cron", 1).await
+    }
+
+    /// Like [`Self::insert_running`], with provenance (v8): what fired the
+    /// run and its attempt number within a retry chain.
+    pub async fn insert_running_as(
+        &self,
+        job_id: &str,
+        started_at: DateTime<Utc>,
+        fired_by: &str,
+        attempt: i64,
+    ) -> Result<CronRun, MemoryError> {
         let run = CronRun {
             id: Uuid::new_v4().to_string(),
             job_id: job_id.to_string(),
@@ -127,6 +156,8 @@ impl RunStore {
             output: None,
             error: None,
             events_json: None,
+            fired_by: fired_by.to_string(),
+            attempt,
         };
         let r = run.clone();
         self.db
@@ -135,9 +166,16 @@ impl RunStore {
             .await?
             .interact(move |conn| -> rusqlite::Result<()> {
                 conn.execute(
-                    "INSERT INTO cron_runs (id, job_id, started_at, status)
-                     VALUES (?1, ?2, ?3, ?4)",
-                    params![r.id, r.job_id, r.started_at, r.status.as_str()],
+                    "INSERT INTO cron_runs (id, job_id, started_at, status, fired_by, attempt)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        r.id,
+                        r.job_id,
+                        r.started_at,
+                        r.status.as_str(),
+                        r.fired_by,
+                        r.attempt
+                    ],
                 )?;
                 Ok(())
             })
@@ -206,6 +244,8 @@ impl RunStore {
             output: None,
             error,
             events_json: None,
+            fired_by: "cron".to_string(),
+            attempt: 1,
         };
         let r = run.clone();
         self.db

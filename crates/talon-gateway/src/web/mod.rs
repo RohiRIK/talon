@@ -13,6 +13,7 @@
 pub mod approvals;
 pub mod flows;
 pub mod handlers;
+pub mod hooks;
 pub mod logs;
 pub mod secrets;
 #[cfg(feature = "web-ui")]
@@ -31,7 +32,7 @@ use axum::{Extension, Json, Router};
 use tokio::sync::broadcast;
 
 use talon_core::scheduler::{RunEvent, SchedulerHandle};
-use talon_memory::{CronStore, RunStore, TokenRole, TokenStore};
+use talon_memory::{CronStore, RunStore, TokenRole, TokenStore, WebhookStore};
 
 use crate::GatewayContext;
 pub use approvals::{ApprovalBroker, PendingApproval};
@@ -66,6 +67,8 @@ pub struct WebState {
     pub events: broadcast::Sender<RunEvent>,
     pub approvals: ApprovalBroker,
     pub tokens: TokenStore,
+    pub hooks: WebhookStore,
+    pub hook_limiter: hooks::HookLimiter,
     pub log_ring: Option<Arc<logs::LogRing>>,
     pub metrics_render: Option<MetricsRender>,
     pub secret_vault: Option<Arc<talon_secrets::BuiltinVault>>,
@@ -84,6 +87,7 @@ impl WebState {
         events: broadcast::Sender<RunEvent>,
         approvals: ApprovalBroker,
         tokens: TokenStore,
+        hooks: WebhookStore,
         token: &str,
     ) -> Result<Self, crate::GatewayError> {
         let token = token.trim();
@@ -100,11 +104,20 @@ impl WebState {
             events,
             approvals,
             tokens,
+            hooks,
+            hook_limiter: hooks::HookLimiter::default(),
             log_ring: None,
             metrics_render: None,
             secret_vault: None,
             token: Arc::from(token),
         })
+    }
+
+    /// Override the per-hook delivery budget (criterion 27,
+    /// `[webhooks] rate_per_min`).
+    pub fn with_hook_rate(mut self, per_min: u32) -> Self {
+        self.hook_limiter = hooks::HookLimiter::new(per_min);
+        self
     }
 
     /// Attach the unlocked builtin vault (criterion 15).
@@ -139,6 +152,8 @@ pub fn api_router(state: WebState) -> Router {
         )
         .route("/jobs/{id}/trigger", post(handlers::trigger_job))
         .route("/jobs/{id}/runs", get(handlers::list_runs))
+        .route("/jobs/{id}/hooks", get(hooks::list).post(hooks::create))
+        .route("/hooks/{hook_id}", delete(hooks::revoke))
         .route("/runs/{id}", get(handlers::get_run))
         .route("/graph", get(handlers::graph))
         .route("/flows/plan", post(flows::plan))
@@ -154,6 +169,19 @@ pub fn api_router(state: WebState) -> Router {
         .route("/logs/tail", get(logs::tail))
         .layer(middleware::from_fn_with_state(state.clone(), require_token))
         .layer(middleware::from_fn(request_id))
+        .with_state(state)
+}
+
+/// PUBLIC webhook delivery router, mounted at the root (`/hooks/{id}`).
+/// Deliberately outside the bearer-auth layer — external services cannot
+/// hold our tokens; the per-delivery HMAC signature is the credential
+/// (criteria 26–27).
+pub fn public_hooks_router(state: WebState) -> Router {
+    Router::new()
+        .route("/hooks/{hook_id}", post(hooks::deliver))
+        .layer(axum::extract::DefaultBodyLimit::max(
+            hooks::MAX_BODY_BYTES + 1024,
+        ))
         .with_state(state)
 }
 
@@ -313,6 +341,7 @@ mod tests {
         db.init_schema().await.expect("schema");
         let cron = CronStore::new(Arc::clone(&db));
         let tokens = TokenStore::new(Arc::clone(&db));
+        let hooks = WebhookStore::new(Arc::clone(&db));
         let runs = RunStore::new(db);
         let scheduler = Scheduler::new(cron.clone(), Arc::new(NoopRunner));
         let sched = scheduler.handle();
@@ -330,6 +359,7 @@ mod tests {
             events,
             ApprovalBroker::new(),
             tokens,
+            hooks,
             TOKEN,
         )
         .expect("state")
@@ -449,6 +479,7 @@ mod tests {
         let db = Arc::new(db);
         let cron = CronStore::new(Arc::clone(&db));
         let tokens = TokenStore::new(Arc::clone(&db));
+        let hooks = WebhookStore::new(Arc::clone(&db));
         let runs = RunStore::new(db);
         let scheduler = Scheduler::new(cron.clone(), Arc::new(NoopRunner));
         let ctx = Arc::new(GatewayContext::new(Arc::new(MockProvider::text(
@@ -462,6 +493,7 @@ mod tests {
             events,
             ApprovalBroker::new(),
             tokens,
+            hooks,
             "   ",
         );
         assert!(result.is_err());
@@ -766,6 +798,7 @@ mod tests {
         db.init_schema().await.expect("schema");
         let cron = CronStore::new(Arc::clone(&db));
         let tokens = TokenStore::new(Arc::clone(&db));
+        let hooks = WebhookStore::new(Arc::clone(&db));
         let runs = RunStore::new(db);
         let scheduler = Scheduler::new(cron.clone(), Arc::new(NoopRunner));
         let sched = scheduler.handle();
@@ -790,6 +823,7 @@ mod tests {
             events,
             ApprovalBroker::new(),
             tokens,
+            hooks,
             TOKEN,
         )
         .expect("state")
@@ -1345,6 +1379,118 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let patched = body_json(resp).await;
         assert_eq!(patched["context_from"].as_array().expect("arr").len(), 0);
+    }
+
+    // ── Webhook triggers (criteria 25–27) ───────────────────────────────────
+
+    #[tokio::test]
+    async fn webhook_lifecycle_create_deliver_revoke() {
+        use talon_secrets::{BuiltinVault, MasterKey};
+
+        let db = Arc::new(Database::open(":memory:").expect("open"));
+        db.init_schema().await.expect("schema");
+        let vault = Arc::new(BuiltinVault::new(
+            Arc::clone(&db),
+            MasterKey::from_bytes([3u8; 32]),
+        ));
+        let state = make_state()
+            .await
+            .with_secret_vault(vault)
+            .with_hook_rate(3);
+        let job = state
+            .cron
+            .create(CronJob::new(
+                "p",
+                CronSchedule::Cron("0 0 * * *".into()),
+                "s",
+            ))
+            .await
+            .expect("job");
+
+        let full_app = || {
+            Router::new()
+                .nest("/api/v1", api_router(state.clone()))
+                .merge(public_hooks_router(state.clone()))
+        };
+
+        // Create (authed): secret appears exactly once.
+        let resp = full_app()
+            .oneshot(authed(
+                "POST",
+                &format!("/api/v1/jobs/{}/hooks", job.id),
+                None,
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let created = body_json(resp).await;
+        let hook_id = created["hook_id"].as_str().expect("hook_id").to_string();
+        let secret = created["secret"].as_str().expect("secret").to_string();
+        assert!(secret.starts_with("whsec_"));
+
+        // List (authed): no secret anywhere.
+        let resp = full_app()
+            .oneshot(authed(
+                "GET",
+                &format!("/api/v1/jobs/{}/hooks", job.id),
+                None,
+            ))
+            .await
+            .expect("response");
+        let listed = body_json(resp).await;
+        assert!(!listed.to_string().contains(&secret));
+
+        // Valid signed delivery (PUBLIC, no bearer) → 202.
+        let body = br#"{"event":"push","ref":"main"}"#;
+        let ts = chrono::Utc::now().timestamp().to_string();
+        let deliver = |sig: String, ts: String| {
+            HttpRequest::builder()
+                .method("POST")
+                .uri(format!("/hooks/{hook_id}"))
+                .header("x-talon-timestamp", ts)
+                .header("x-talon-signature", sig)
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_vec()))
+                .expect("request")
+        };
+        let resp = full_app()
+            .oneshot(deliver(hooks::sign(&secret, &ts, body), ts.clone()))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::ACCEPTED, "criterion 26");
+        let accepted = body_json(resp).await;
+        assert_eq!(accepted["job_id"], serde_json::json!(job.id));
+
+        // Bad signature → 401, no run queued.
+        let resp = full_app()
+            .oneshot(deliver(hooks::sign("whsec_wrong", &ts, body), ts.clone()))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        // Rate limit (budget 3; two deliveries used) → exhaust then 429.
+        let resp = full_app()
+            .oneshot(deliver(hooks::sign(&secret, &ts, body), ts.clone()))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        let resp = full_app()
+            .oneshot(deliver(hooks::sign(&secret, &ts, body), ts.clone()))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS, "criterion 27");
+
+        // Revoke (authed) → subsequent delivery 404.
+        let resp = full_app()
+            .oneshot(authed("DELETE", &format!("/api/v1/hooks/{hook_id}"), None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        let resp = full_app()
+            .oneshot(deliver(hooks::sign(&secret, &ts, body), ts))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "criterion 25");
     }
 
     // ── token_eq ────────────────────────────────────────────────────────────

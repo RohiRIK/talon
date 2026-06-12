@@ -1010,6 +1010,19 @@ async fn build_secret_resolver(
     (Arc::new(resolver), vault_handle)
 }
 
+/// `[webhooks] rate_per_min` from config.toml (criterion 27); `None` keeps
+/// the built-in default.
+fn load_webhook_rate() -> Option<u32> {
+    let cfg = talon_home().ok()?.join("config.toml");
+    let text = std::fs::read_to_string(cfg).ok()?;
+    let table: toml::Value = text.parse().ok()?;
+    table
+        .get("webhooks")?
+        .get("rate_per_min")?
+        .as_integer()
+        .and_then(|n| u32::try_from(n).ok())
+}
+
 /// `[secrets]` table from `~/.talon/config.toml`, when readable.
 #[cfg(any(feature = "vault", feature = "aws-secrets"))]
 fn load_secrets_table() -> Option<toml::Value> {
@@ -1089,6 +1102,7 @@ async fn cmd_serve(
         .context("serve requires a database — none was opened")?;
     let store = CronStore::new(Arc::clone(&db));
     let token_store = TokenStore::new(Arc::clone(&db));
+    let hook_store = talon_memory::WebhookStore::new(Arc::clone(&db));
     let run_store = RunStore::new(db);
 
     let tick_secs = std::env::var("TALON_SCHEDULER_TICK_SECS")
@@ -1132,10 +1146,15 @@ async fn cmd_serve(
                 event_tx,
                 approvals,
                 token_store,
+                hook_store,
                 token,
             )
             .map_err(|e| anyhow::anyhow!("{e}"))?
             .with_log_ring(log_ring);
+
+            if let Some(per_min) = load_webhook_rate() {
+                state = state.with_hook_rate(per_min);
+            }
 
             if let Some(vault) = secret_vault {
                 state = state.with_secret_vault(vault);

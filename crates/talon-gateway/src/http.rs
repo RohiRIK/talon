@@ -64,6 +64,9 @@ impl Gateway for HttpGateway {
                     tracing::info!("prometheus metrics mounted at /metrics (token-protected)");
                 }
 
+                app = app.merge(crate::web::public_hooks_router(web.clone()));
+                tracing::info!("webhook delivery mounted at /hooks/{{id}} (HMAC-authenticated)");
+
                 #[cfg(feature = "web-ui")]
                 {
                     use axum::http::{StatusCode, Uri};

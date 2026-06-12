@@ -12,6 +12,7 @@ static MIGRATIONS: &[(i64, &str)] = &[
     (5, include_str!("schema_runs.sql")),
     (6, include_str!("schema_secrets.sql")),
     (7, include_str!("schema_tokens.sql")),
+    (8, include_str!("schema_hooks.sql")),
 ];
 
 /// Run all pending migrations on an open connection.
@@ -89,6 +90,7 @@ mod tests {
             "cron_runs",
             "secrets",
             "api_tokens",
+            "webhooks",
         ] {
             assert!(
                 tables.iter().any(|t| t == expected),
@@ -114,7 +116,7 @@ mod tests {
                 r.get(0)
             })
             .expect("query");
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
     }
 
     #[test]
@@ -150,7 +152,7 @@ mod tests {
                 r.get(0)
             })
             .expect("version");
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
 
         // cron_runs exists and is empty; existing job survived.
         let runs: i64 = conn
@@ -201,7 +203,7 @@ mod tests {
                 r.get(0)
             })
             .expect("version");
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
 
         let secrets: i64 = conn
             .query_row("SELECT COUNT(*) FROM secrets", [], |r| r.get(0))
@@ -211,6 +213,17 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM cron_runs", [], |r| r.get(0))
             .expect("cron_runs survived");
         assert_eq!(runs, 1);
+
+        // v8 additive columns landed on the pre-existing row with defaults.
+        let (fired_by, attempt): (String, i64) = conn
+            .query_row(
+                "SELECT fired_by, attempt FROM cron_runs WHERE id='r1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("v8 columns");
+        assert_eq!(fired_by, "cron");
+        assert_eq!(attempt, 1);
     }
 
     #[test]
