@@ -72,6 +72,12 @@ jobs:
         run: cargo build -p talon-gateway --features telegram,images
       - name: Tools feature build (browser)
         run: cargo build -p talon-tools --features browser
+      - name: Secret provider feature tests (vault, aws-secrets)
+        if: runner.os == 'Linux'
+        run: cargo nextest run -p talon-secrets --features vault,aws-secrets
+      - name: Lean default tree (vault/aws/otel must stay feature-gated)
+        if: runner.os != 'Windows'
+        run: bash scripts/check_default_features.sh
 
   # ── build ─────────────────────────────────────────────────────────────────────
   build:

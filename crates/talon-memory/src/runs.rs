@@ -336,6 +336,26 @@ impl RunStore {
             .await??;
         Ok(runs)
     }
+
+    /// Retention (criterion 31): delete runs older than `cutoff`. Returns the
+    /// number of pruned rows. `running` rows are kept regardless — a crashed
+    /// row older than the cutoff is forensic signal, not noise.
+    pub async fn prune_before(&self, cutoff: DateTime<Utc>) -> Result<usize, MemoryError> {
+        let cutoff = fmt_utc(cutoff);
+        let pruned = self
+            .db
+            .pool()
+            .get()
+            .await?
+            .interact(move |conn| -> rusqlite::Result<usize> {
+                conn.execute(
+                    "DELETE FROM cron_runs WHERE started_at < ?1 AND status != 'running'",
+                    params![cutoff],
+                )
+            })
+            .await??;
+        Ok(pruned)
+    }
 }
 
 #[cfg(test)]

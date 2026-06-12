@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod cache;
 pub mod context;
 pub mod cron;
@@ -17,6 +18,7 @@ pub mod tokens;
 pub mod webhooks;
 pub mod working;
 
+pub use audit::{AuditEntry, AuditStore};
 pub use cache::{CacheStats, SemanticCache};
 pub use context::{BuiltContext, ContextBuilder};
 pub use cron::{CronJob, CronSchedule, CronStore, GrantedScope, validate_schedule};

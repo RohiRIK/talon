@@ -72,6 +72,7 @@ pub struct WebState {
     pub log_ring: Option<Arc<logs::LogRing>>,
     pub metrics_render: Option<MetricsRender>,
     pub secret_vault: Option<Arc<talon_secrets::BuiltinVault>>,
+    pub audit: Option<talon_memory::AuditStore>,
     token: Arc<str>,
 }
 
@@ -109,8 +110,15 @@ impl WebState {
             log_ring: None,
             metrics_render: None,
             secret_vault: None,
+            audit: None,
             token: Arc::from(token),
         })
+    }
+
+    /// Record every mutating request in the audit log (criterion 32).
+    pub fn with_audit(mut self, audit: talon_memory::AuditStore) -> Self {
+        self.audit = Some(audit);
+        self
     }
 
     /// Override the per-hook delivery budget (criterion 27,
@@ -254,18 +262,21 @@ async fn require_token(State(state): State<WebState>, mut req: Request, next: Ne
         None
     };
 
-    let mut identity: Option<AuthIdentity> = None;
+    let mut identity: Option<(AuthIdentity, String)> = None;
     for presented in [header_token, query_token].into_iter().flatten() {
         if token_eq(&presented, state.token.as_ref()) {
-            identity = Some(AuthIdentity {
-                name: LEGACY_TOKEN_NAME.to_string(),
-                role: TokenRole::Admin,
-            });
+            identity = Some((
+                AuthIdentity {
+                    name: LEGACY_TOKEN_NAME.to_string(),
+                    role: TokenRole::Admin,
+                },
+                presented,
+            ));
             break;
         }
         match state.tokens.verify(&presented).await {
             Ok(Some((name, role))) => {
-                identity = Some(AuthIdentity { name, role });
+                identity = Some((AuthIdentity { name, role }, presented));
                 break;
             }
             Ok(None) => {}
@@ -273,7 +284,7 @@ async fn require_token(State(state): State<WebState>, mut req: Request, next: Ne
         }
     }
 
-    let Some(identity) = identity else {
+    let Some((identity, presented)) = identity else {
         return (
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({ "error": "unauthorized" })),
@@ -292,6 +303,21 @@ async fn require_token(State(state): State<WebState>, mut req: Request, next: Ne
             Json(serde_json::json!({ "error": "viewer tokens are read-only" })),
         )
             .into_response();
+    }
+
+    // Audit (criterion 32): every authenticated mutating request, before it
+    // executes, attributed by token fingerprint — never the token.
+    if !read_only && let Some(audit) = &state.audit {
+        let fp = talon_memory::hash_token(&presented);
+        let path = req.uri().path().to_string();
+        let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        let target = (segments.len() >= 2).then(|| segments[segments.len() - 1].to_string());
+        if let Err(e) = audit
+            .record(&fp, req.method().as_str(), &path, target)
+            .await
+        {
+            tracing::error!(error = %e, "audit record failed");
+        }
     }
 
     req.extensions_mut().insert(identity);
@@ -1566,6 +1592,44 @@ mod tests {
         let patched = body_json(resp).await;
         assert!(patched["on_failure"].is_null());
         assert_eq!(patched["retry_max"], 2, "retry policy untouched");
+    }
+
+    // ── Audit log (criterion 32) ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn mutating_requests_are_audited_with_fingerprint_only() {
+        use talon_memory::{AuditStore, hash_token};
+
+        let db = Arc::new(Database::open(":memory:").expect("open"));
+        db.init_schema().await.expect("schema");
+        let audit = AuditStore::new(Arc::clone(&db));
+        let state = make_state().await.with_audit(audit.clone());
+
+        // Read → no row.
+        app(state.clone())
+            .oneshot(authed("GET", "/api/v1/jobs", None))
+            .await
+            .expect("response");
+        assert!(audit.recent(10).await.expect("recent").is_empty());
+
+        // Mutation → one row, attributed by fingerprint.
+        app(state.clone())
+            .oneshot(authed(
+                "POST",
+                "/api/v1/jobs",
+                Some(r#"{"prompt":"x","schedule":"daily"}"#),
+            ))
+            .await
+            .expect("response");
+        let entries = audit.recent(10).await.expect("recent");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].method, "POST");
+        assert_eq!(entries[0].path, "/jobs");
+        assert_eq!(entries[0].token_fp, hash_token(TOKEN)[..8].to_string());
+        assert!(
+            !TOKEN.contains(&entries[0].token_fp),
+            "fp is not a token substring"
+        );
     }
 
     // ── token_eq ────────────────────────────────────────────────────────────

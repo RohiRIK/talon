@@ -184,6 +184,10 @@ pub struct Scheduler {
     /// never observe a closed channel and busy-loop the `select!`.
     cmd_tx: mpsc::Sender<SchedulerCmd>,
     cmd_rx: Mutex<mpsc::Receiver<SchedulerCmd>>,
+    /// Retention (criterion 31): prune `cron_runs` older than this many days
+    /// on a daily cadence. `None` = never prune (historical behavior).
+    retention_days: Option<i64>,
+    last_prune: Mutex<Option<std::time::Instant>>,
 }
 
 const DEFAULT_TICK_SECS: u64 = 30;
@@ -201,7 +205,15 @@ impl Scheduler {
             events: None,
             cmd_tx,
             cmd_rx: Mutex::new(cmd_rx),
+            retention_days: None,
+            last_prune: Mutex::new(None),
         }
+    }
+
+    /// Enable daily pruning of run history older than `days` (criterion 31).
+    pub fn with_retention_days(mut self, days: i64) -> Self {
+        self.retention_days = Some(days.max(0));
+        self
     }
 
     /// Override the tick interval (config `[scheduler] tick_secs`).
@@ -259,6 +271,7 @@ impl Scheduler {
                 }
                 _ = ticker.tick() => {
                     self.dispatch_due(Utc::now(), &tracker).await;
+                    self.maybe_prune().await;
                 }
             }
         }
@@ -268,6 +281,34 @@ impl Scheduler {
     /// the `select!` race cannot drop a queued command.
     async fn recv_cmd(rx: &Mutex<mpsc::Receiver<SchedulerCmd>>) -> Option<SchedulerCmd> {
         rx.lock().await.recv().await
+    }
+
+    /// Daily retention sweep (criterion 31): at most once per 24h, delete
+    /// runs older than `retention_days`. No-op without a run store or policy.
+    async fn maybe_prune(&self) {
+        let (Some(days), Some(runs)) = (self.retention_days, &self.runs) else {
+            return;
+        };
+        {
+            let last = self.last_prune.lock().await;
+            if let Some(at) = *last
+                && at.elapsed() < Duration::from_secs(24 * 60 * 60)
+            {
+                return;
+            }
+        }
+        self.prune_now(days, runs).await;
+        *self.last_prune.lock().await = Some(std::time::Instant::now());
+    }
+
+    /// The actual sweep — separated so tests can exercise it directly.
+    async fn prune_now(&self, days: i64, runs: &RunStore) {
+        let cutoff = Utc::now() - chrono::Duration::days(days);
+        match runs.prune_before(cutoff).await {
+            Ok(0) => {}
+            Ok(n) => tracing::info!(pruned = n, retention_days = days, "run history pruned"),
+            Err(e) => tracing::error!(error = %e, "run-history prune failed"),
+        }
     }
 
     /// Select jobs due at `now` and spawn each that isn't already running.
@@ -764,6 +805,69 @@ mod tests {
             runs.list_for_job(&c.id, 10).await.expect("rows").is_empty(),
             "no cascade"
         );
+    }
+
+    /// Criterion 31: the retention sweep deletes old completed runs and keeps
+    /// recent ones; without a policy nothing is touched.
+    #[tokio::test]
+    async fn retention_prunes_old_completed_runs() {
+        let db = Arc::new(Database::open(":memory:").expect("open"));
+        db.init_schema().await.expect("schema");
+        let cron = CronStore::new(Arc::clone(&db));
+        let runs = RunStore::new(Arc::clone(&db));
+        let job = cron
+            .create(CronJob::new(
+                "p",
+                CronSchedule::Cron("0 0 * * *".into()),
+                "s",
+            ))
+            .await
+            .expect("job");
+
+        let old = runs
+            .insert_running(&job.id, Utc::now())
+            .await
+            .expect("old run");
+        runs.finalize(&old.id, RunStatus::Success, None, None, None)
+            .await
+            .expect("finalize old");
+        let recent = runs
+            .insert_running(&job.id, Utc::now())
+            .await
+            .expect("recent run");
+        runs.finalize(&recent.id, RunStatus::Success, None, None, None)
+            .await
+            .expect("finalize recent");
+
+        // Backdate the first run far past any retention window.
+        let old_id = old.id.clone();
+        db.pool()
+            .get()
+            .await
+            .expect("conn")
+            .interact(move |conn| {
+                conn.execute(
+                    "UPDATE cron_runs SET started_at='2020-01-01T00:00:00Z' WHERE id=?1",
+                    [old_id],
+                )
+            })
+            .await
+            .expect("interact")
+            .expect("backdate");
+
+        let (_, counting_runner) = counting();
+        let scheduler = Scheduler::new(cron.clone(), counting_runner)
+            .with_run_store(runs.clone())
+            .with_retention_days(30);
+        scheduler.maybe_prune().await;
+
+        let remaining = runs.list_for_job(&job.id, 10).await.expect("rows");
+        assert_eq!(remaining.len(), 1, "old pruned, recent kept");
+        assert_eq!(remaining[0].id, recent.id);
+
+        // Second sweep inside 24h is a no-op (and must not error).
+        scheduler.maybe_prune().await;
+        assert_eq!(runs.list_for_job(&job.id, 10).await.expect("rows").len(), 1);
     }
 
     /// A runner that emits a log line from inside the run.

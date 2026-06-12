@@ -27,9 +27,11 @@ reqwest    = { workspace = true, optional = true }
 serde      = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
-# feature = "aws-secrets" — AWS Secrets Manager (default credential chain, read-only)
-aws-config                = { version = "1", optional = true, default-features = false, features = ["behavior-version-latest", "rustls"] }
-aws-sdk-secretsmanager    = { version = "1", optional = true, default-features = false, features = ["rustls"] }
+# feature = "aws-secrets" — AWS Secrets Manager (default credential chain, read-only).
+# `default-https-client` = the modern rustls(0.23) client; the legacy `rustls`
+# feature would drag in rustls 0.21 / rustls-webpki 0.101 (RUSTSEC-2026-0098/99/0104).
+aws-config                = { version = "1", optional = true, default-features = false, features = ["behavior-version-latest", "default-https-client"] }
+aws-sdk-secretsmanager    = { version = "1", optional = true, default-features = false, features = ["default-https-client"] }
 
 [features]
 vault       = ["dep:reqwest", "dep:serde", "dep:serde_json"]
