@@ -105,7 +105,7 @@ croner     = "3"
 # tui-textarea was dropped because it lags ratatui releases (no 0.30 support).
 # default-features=false drops `chafa-dyn`, which needs the `chafa` C system lib.
 ratatui-image        = { version = "11", default-features = false, features = ["crossterm", "image-defaults"] }
-comrak               = "0.28"
+comrak               = "0.52"
 syntect              = "5"
 similar              = "2"
 indicatif            = "0.17"
