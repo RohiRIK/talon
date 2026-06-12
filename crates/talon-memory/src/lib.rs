@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod cache;
 pub mod context;
 pub mod cron;
@@ -10,13 +11,17 @@ pub mod hybrid_search;
 pub mod ltm;
 pub mod migrations;
 pub mod promotion;
+pub mod runs;
 pub mod sqlite_store;
 pub mod store;
+pub mod tokens;
+pub mod webhooks;
 pub mod working;
 
+pub use audit::{AuditEntry, AuditStore};
 pub use cache::{CacheStats, SemanticCache};
 pub use context::{BuiltContext, ContextBuilder};
-pub use cron::{CronJob, CronSchedule, CronStore, GrantedScope};
+pub use cron::{CronJob, CronSchedule, CronStore, GrantedScope, validate_schedule};
 pub use decay::{DecayEngine, decay_factor};
 pub use dedup::{DedupOutcome, Deduplicator, cosine_similarity};
 pub use error::MemoryError;
@@ -25,8 +30,11 @@ pub use files::{MemoryMd, UserMd};
 pub use hybrid_search::{HybridSearch, reciprocal_rank_fusion};
 pub use ltm::{LtmStore, Memory, MemoryCategory, MemoryStats};
 pub use promotion::{Embedder, Promoter, PromotionReport};
+pub use runs::{CronRun, RunStatus, RunStore};
 pub use sqlite_store::SqliteStore;
 pub use store::MemoryStore;
+pub use tokens::{TokenMeta, TokenRole, TokenStore, hash_token};
+pub use webhooks::{Webhook, WebhookStore};
 pub use working::{Summarizer, WorkingMemory};
 
 use std::sync::Once;

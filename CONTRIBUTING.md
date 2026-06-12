@@ -37,6 +37,19 @@ cargo build --workspace
 cargo nextest run --workspace
 ```
 
+### Web console assets (`web/`)
+
+`web/dist` is a **committed release artifact** embedded into the binary by
+`rust-embed` (`--features web-ui`) — Rust builds never need bun/Node, same
+pattern as the prebuilt `tests/fixtures/hello.wasm`. If you touch anything in
+`web/src`, rebuild and commit the artifact:
+
+```bash
+cd web && bun install && bun run test && bun run build
+```
+
+CI rebuilds `web/dist` and fails on drift (`git diff --exit-code web/dist`).
+
 ---
 
 ## Invariants (Hard Rules)

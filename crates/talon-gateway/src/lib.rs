@@ -18,6 +18,7 @@ pub mod http;
 pub mod normalize;
 pub mod registry;
 pub mod tui;
+pub mod web;
 
 #[cfg(feature = "telegram")]
 pub mod telegram;

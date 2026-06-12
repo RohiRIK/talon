@@ -1,0 +1,5 @@
+# dist/ is COMMITTED on purpose — it is a release artifact embedded into the
+# talon binary by rust-embed (web-ui feature), so `cargo build --features
+# web-ui` needs no bun/Node. Rebuild with: bun run build
+node_modules/
+*.local

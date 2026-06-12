@@ -20,21 +20,51 @@ talon-llm     = { path = "../crates/talon-llm", features = ["github-copilot-prov
 talon-memory  = { path = "../crates/talon-memory" }
 talon-gateway = { path = "../crates/talon-gateway" }
 talon-tools   = { path = "../crates/talon-tools" }
+talon-secrets = { path = "../crates/talon-secrets" }
+talon-plugins = { path = "../crates/talon-plugins", optional = true }
 
 tokio.workspace              = true
 tokio-util.workspace         = true
 tracing.workspace            = true
 tracing-subscriber.workspace = true
+tracing-appender.workspace   = true
+metrics-exporter-prometheus.workspace = true
 clap.workspace               = true
 anyhow.workspace             = true
 keyring.workspace            = true
 serde_json.workspace         = true
 uuid.workspace               = true
 chrono.workspace             = true
+inquire.workspace            = true
+toml                         = "0.8"
+
+# feature = "otel" — OTLP span export (criterion 18). Versions move in
+# lockstep: tracing-opentelemetry 0.29 ↔ opentelemetry 0.28.
+tracing-opentelemetry = { version = "0.29", optional = true }
+opentelemetry         = { version = "0.28", optional = true }
+opentelemetry_sdk     = { version = "0.28", optional = true }
+opentelemetry-otlp    = { version = "0.28", optional = true, default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
 
 [features]
 telegram = ["talon-gateway/telegram"]
 browser  = ["talon-tools/browser"]
+# WASM skills loaded from ~/.talon/skills/ at startup. Opt-in: pulls wasmtime
+# (15–22 MB). Default builds stay lean and skip the plugin host entirely.
+skills   = ["dep:talon-plugins", "talon-plugins/wasm"]
+# Web console SPA embedded into the binary (committed web/dist via rust-embed
+# in talon-gateway), served by `talon serve` at /ui. Default builds stay lean.
+web-ui   = ["talon-gateway/web-ui"]
+# External secret providers — read-only, config-gated at runtime, feature-gated
+# at compile time. Default builds compile neither.
+vault       = ["talon-secrets/vault"]
+aws-secrets = ["talon-secrets/aws-secrets"]
+# OTLP span export — off by default; [otel] endpoint gates it at runtime.
+otel = [
+    "dep:tracing-opentelemetry",
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+]
 
 [dev-dependencies]
 tempfile = "3"

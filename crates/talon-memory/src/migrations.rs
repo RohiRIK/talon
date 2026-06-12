@@ -9,6 +9,12 @@ static MIGRATIONS: &[(i64, &str)] = &[
     (2, include_str!("schema_ltm.sql")),
     (3, include_str!("schema_ltm_tags.sql")),
     (4, include_str!("schema_cron.sql")),
+    (5, include_str!("schema_runs.sql")),
+    (6, include_str!("schema_secrets.sql")),
+    (7, include_str!("schema_tokens.sql")),
+    (8, include_str!("schema_hooks.sql")),
+    (9, include_str!("schema_reliability.sql")),
+    (10, include_str!("schema_audit.sql")),
 ];
 
 /// Run all pending migrations on an open connection.
@@ -83,6 +89,11 @@ mod tests {
             "memories_fts",
             "vec_memories",
             "cron_jobs",
+            "cron_runs",
+            "secrets",
+            "api_tokens",
+            "webhooks",
+            "audit_log",
         ] {
             assert!(
                 tables.iter().any(|t| t == expected),
@@ -108,7 +119,114 @@ mod tests {
                 r.get(0)
             })
             .expect("query");
-        assert_eq!(version, 4);
+        assert_eq!(version, 10);
+    }
+
+    #[test]
+    fn v5_applies_on_top_of_existing_v4_database() {
+        // Simulate an existing install: apply v1–v4 only, then run() — only v5
+        // (cron_runs) should be applied, leaving prior data intact.
+        let conn = in_memory();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                 version    INTEGER PRIMARY KEY,
+                 applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+             );",
+        )
+        .expect("bootstrap");
+        for &(version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v <= 4) {
+            conn.execute_batch(sql).expect("apply legacy");
+            conn.execute(
+                "INSERT OR IGNORE INTO schema_migrations (version) VALUES (?1)",
+                [version],
+            )
+            .expect("record legacy");
+        }
+        conn.execute(
+            "INSERT INTO cron_jobs (id, schedule, prompt, session_id) VALUES ('j1', '\"daily\"', 'p', 's')",
+            [],
+        )
+        .expect("seed job");
+
+        run(&conn).expect("upgrade past v4");
+
+        let version: i64 = conn
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |r| {
+                r.get(0)
+            })
+            .expect("version");
+        assert_eq!(version, 10);
+
+        // cron_runs exists and is empty; existing job survived.
+        let runs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cron_runs", [], |r| r.get(0))
+            .expect("cron_runs query");
+        assert_eq!(runs, 0);
+        let jobs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cron_jobs", [], |r| r.get(0))
+            .expect("cron_jobs query");
+        assert_eq!(jobs, 1);
+    }
+
+    #[test]
+    fn v6_applies_on_top_of_existing_v5_database() {
+        // Existing install at v5 (web console): run() should apply only v6,
+        // creating the empty secrets table and leaving run history intact.
+        let conn = in_memory();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                 version    INTEGER PRIMARY KEY,
+                 applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+             );",
+        )
+        .expect("bootstrap");
+        for &(version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v <= 5) {
+            conn.execute_batch(sql).expect("apply legacy");
+            conn.execute(
+                "INSERT OR IGNORE INTO schema_migrations (version) VALUES (?1)",
+                [version],
+            )
+            .expect("record legacy");
+        }
+        conn.execute(
+            "INSERT INTO cron_jobs (id, schedule, prompt, session_id) VALUES ('j1', '\"daily\"', 'p', 's')",
+            [],
+        )
+        .expect("seed job");
+        conn.execute(
+            "INSERT INTO cron_runs (id, job_id, started_at, status) VALUES ('r1', 'j1', '2026-06-01T00:00:00Z', 'success')",
+            [],
+        )
+        .expect("seed run");
+
+        run(&conn).expect("upgrade to v6");
+
+        let version: i64 = conn
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |r| {
+                r.get(0)
+            })
+            .expect("version");
+        assert_eq!(version, 10);
+
+        let secrets: i64 = conn
+            .query_row("SELECT COUNT(*) FROM secrets", [], |r| r.get(0))
+            .expect("secrets query");
+        assert_eq!(secrets, 0);
+        let runs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cron_runs", [], |r| r.get(0))
+            .expect("cron_runs survived");
+        assert_eq!(runs, 1);
+
+        // v8 additive columns landed on the pre-existing row with defaults.
+        let (fired_by, attempt): (String, i64) = conn
+            .query_row(
+                "SELECT fired_by, attempt FROM cron_runs WHERE id='r1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("v8 columns");
+        assert_eq!(fired_by, "cron");
+        assert_eq!(attempt, 1);
     }
 
     #[test]

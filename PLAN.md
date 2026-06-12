@@ -513,7 +513,7 @@ tokio runtime
 - [x] 4.16 Update `talon/src/main.rs`: `--gateway cli,tui,telegram,http` flag; `--accessible` flag; spawn each as `tokio::spawn`
 - [x] 4.17 Integration tests: CLI roundtrip, HTTP POST roundtrip with mock LLM, TUI render smoke test (headless)
 - [x] 4.18 Manual test: Telegram bot responds within 5s end-to-end
-- [ ] 4.19 `talon init` onboarding wizard — `talon/src/init.rs`: detect available provider(s) by probing auth (env vars, CLI tools); query each provider's models endpoint (e.g. `GET https://api.githubcopilot.com/models`); present an interactive numbered list of `model_picker_enabled` models; write chosen model to `~/.talon/config.toml [llm] model`; all providers read this config first, then `TALON_LLM_MODEL` env override, then their `DEFAULT_MODEL` constant as last-reste fallback. Run automatically on first launch when no config exists. **[DEFERRED — user decision]**
+- [x] 4.19 `talon init` onboarding wizard (2026-06-02) — `talon/src/wizard.rs`: inquire-driven interactive multi-provider wizard. Multi-select from the preset catalog (`talon-llm/src/presets.rs`, 12 providers) → masked key entry stored per-provider in the OS keychain → live `/models` fetch for OpenAI-compatible providers (built-in lists otherwise) → default-model pick per provider → ordered fallback chain. Writes the `[llm]` chain into `~/.talon/config.toml` (preserving other sections). `resolve_provider` builds a `FallbackProvider` from the chain (single entry → lone provider), with `TALON_LLM_PROVIDER`/`API_KEY` env fallback when no config. Scope grew past the original single-model design into the multi-provider + fallback feature the user requested. Supporting types: `ModelInfo`/`ModelLister`, `OpenAiCompatProvider` (base_url + live models), `LlmConfig`/`ProviderChoice`, `FallbackProvider`.
 
 ### Phase 4 Bug Fixes (found during live Telegram smoke test 2026-05-28)
 
@@ -611,18 +611,18 @@ cargo run --release -- --message "search Rust async news, summarize top 3"
 > abstraction before committing to WASM ABI complexity.
 
 ### Tasks
-- [ ] 6.1 `crates/talon-plugins/src/lib.rs` — `PluginHost` using `wasmtime::Engine` + WASI preview2
-- [ ] 6.2 `crates/talon-plugins/src/skill.rs` — `Skill` struct: id, path, wasm_module, manifest (capabilities + approval_level)
-- [ ] 6.3 `crates/talon-plugins/src/store.rs` — `SkillStore`: load `.wasm` from `~/.talon/skills/`, hot-reload via `notify`
-- [ ] 6.4 `crates/talon-plugins/src/sandbox.rs` — capability gating: WASM only calls host functions declared in manifest
-- [ ] 6.5 Each skill becomes `Arc<dyn Tool>` adapter (replaces subprocess adapter from Phase 5 for compiled plugins)
+- [x] 6.1 `crates/talon-plugins/src/host.rs` — `PluginHost`: `wasmtime::Engine` + WASI preview2 + `talon:skill` component linker (WIT contract in `wit/world.wit`)
+- [x] 6.2 `crates/talon-plugins/src/manifest.rs` — `SkillManifest` (host-trusted sidecar `<name>.toml`): name, description, capabilities, approval_level, input_schema
+- [x] 6.3 `crates/talon-plugins/src/store.rs` — `SkillStore`: load `.wasm` + sidecar `.toml` from `~/.talon/skills/`, hot-reload via `notify` (full re-scan on change)
+- [x] 6.4 capability gating folded into `host.rs` `Host::log` — host fn traps if the manifest did not grant the capability
+- [x] 6.5 `crates/talon-plugins/src/tool.rs` — `SkillTool` adapter: each skill becomes `Arc<dyn Tool>` (manifest-sourced approval, `run` on `spawn_blocking`); `SkillStore::tools()` snapshots the registry
 - [x] 6.6 `crates/talon-memory/src/cron.rs` — `CronStore` table: id, expr, prompt, last_run, next_run
 - [x] 6.7 `crates/talon-core/src/scheduler.rs` — `Scheduler`: tokio interval ticker, polls due jobs, invokes `Agent::run` (via `JobRunner` seam; `talon serve` wires the concrete runner)
 - [x] 6.8 `crates/talon-tools/src/cronjob.rs` — `CronJobTool` (NeedsApproval): create/list/delete cron jobs (+ §4.4 creation-time scope wizard `predict_scope` and runtime `granted_scope` enforcement via `effective_unattended_level`)
 - [x] 6.8a `talon/src/main.rs` — `talon serve` daemon: wires `Scheduler` + `TalonJobRunner` (concrete `JobRunner`) alongside a foreground gateway, graceful drain via `CancellationToken` + `TaskTracker`; unattended runs deny `ApprovalRequested`
 - [x] 6.8b `talon/src/cron_cli.rs` — `talon cron` tree-view CLI (SPEC §4.1 S6): `context_from`-nested DAG render + `enable`/`disable`/`rm`
-- [ ] 6.9 `examples/skills/hello/` — example skill compiling to `.wasm`
-- [ ] 6.10 Hot-reload test: drop `.wasm` → appears in tool list within 2s
+- [x] 6.9 `examples/skills/hello/` — example skill compiling to `.wasm` (reproducible `build.sh` pins the rustup toolchain; prebuilt `tests/fixtures/hello.wasm` committed so CI never compiles wasm)
+- [x] 6.10 Hot-reload test: drop `.wasm` → appears in tool list within 2s (`skill_e2e.rs`: load/run/log/tool/hot-reload); skills loaded into the binary at startup behind the `skills` feature
 - [x] 6.11 Cron test: real `run()` tick-loop fires a due job on its own timer (live wall-clock test); minutely due-detection covered by `due_picks_up_minutely_cron_job` + `dispatch_runs_due_job_and_marks_run`
 
 ### Exit Gate

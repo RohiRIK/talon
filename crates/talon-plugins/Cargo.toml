@@ -16,10 +16,24 @@ serde.workspace      = true
 serde_json.workspace = true
 thiserror.workspace  = true
 tracing.workspace    = true
+anyhow.workspace     = true
+toml                 = "0.8"
 
 [dependencies.wasmtime]
 workspace = true
 optional  = true
 
+[dependencies.wasmtime-wasi]
+workspace = true
+optional  = true
+
+[dependencies.notify]
+workspace = true
+optional  = true
+
+[dev-dependencies]
+tempfile = "3"
+
 [features]
-wasm = ["dep:wasmtime"]
+# WASM host is opt-in: pulls wasmtime (15–22 MB) + WASI + a filesystem watcher.
+wasm = ["dep:wasmtime", "dep:wasmtime-wasi", "dep:notify"]

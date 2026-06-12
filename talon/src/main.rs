@@ -2,26 +2,33 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde_json::json;
 use std::future::Future;
-use std::io::{self, Write as _};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use talon_core::approval::ApprovalLevel;
 use talon_core::events::AgentEvent;
-use talon_core::scheduler::{JobOutcome, JobRunner, Scheduler};
+use talon_core::scheduler::{JobOutcome, JobRunner, RunEvent, Scheduler};
 use talon_core::tools::{Tool, ToolContext, ToolResult};
+use talon_gateway::web::{ApprovalBroker, EVENT_CHANNEL_CAP, PendingApproval, WebState};
 use talon_gateway::{Gateway, GatewayContext, cli::CliGateway, http::HttpGateway, tui::TuiGateway};
-use talon_llm::{AnthropicProvider, GitHubCopilotProvider, LlmProvider};
-use talon_memory::{CronJob, CronStore, Database, LtmStore, SqliteStore};
+use talon_llm::{
+    AnthropicProvider, FallbackProvider, GitHubCopilotProvider, LlmConfig, LlmProvider,
+    OpenAiCompatProvider, ProviderChoice,
+};
+use talon_memory::{CronJob, CronStore, Database, LtmStore, RunStore, SqliteStore, TokenStore};
 use talon_tools::mcp::{McpClient, McpServersConfig, adapt_server};
 use talon_tools::web::WebConfig;
 use talon_tools::{CronJobTool, SessionSearchTool, WebExtractTool, WebSearchTool, timeouts};
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 mod cron_cli;
+mod logging;
+mod secret_cli;
+mod token_cli;
+mod wizard;
 
 // ── CLI definition ────────────────────────────────────────────────────────────
 
@@ -89,6 +96,16 @@ enum Commands {
     Cron {
         #[command(subcommand)]
         action: cron_cli::CronAction,
+    },
+    /// Manage the builtin encrypted secret vault.
+    Secret {
+        #[command(subcommand)]
+        action: secret_cli::SecretAction,
+    },
+    /// Manage named API tokens for the web console and HTTP API.
+    Token {
+        #[command(subcommand)]
+        action: token_cli::TokenAction,
     },
 }
 
@@ -196,7 +213,7 @@ impl Tool for ReadFileTool {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    init_tracing(&cli.log_level)?;
+    let log_handle = logging::init(&cli.log_level, talon_home().ok())?;
 
     match cli.command {
         Some(Commands::Init) => cmd_init().await,
@@ -204,8 +221,12 @@ async fn main() -> Result<()> {
         Some(Commands::Memory { action }) => cmd_memory(action).await,
         Some(Commands::Cache { action }) => cmd_cache(action).await,
         Some(Commands::Doctor) => cmd_doctor().await,
-        Some(Commands::Serve { gateway }) => cmd_serve(gateway, cli.accessible).await,
+        Some(Commands::Serve { gateway }) => {
+            cmd_serve(gateway, cli.accessible, Arc::clone(&log_handle.ring)).await
+        }
         Some(Commands::Cron { action }) => cron_cli::run(action).await,
+        Some(Commands::Secret { action }) => secret_cli::run(action, talon_home()?).await,
+        Some(Commands::Token { action }) => token_cli::run(action, talon_home()?).await,
         None => cmd_run(cli.message, cli.config, cli.gateway, cli.accessible).await,
     }
 }
@@ -229,16 +250,78 @@ async fn cmd_init() -> Result<()> {
         println!("Wrote starter config to {}", config_path.display());
     }
 
-    let api_key = prompt_secret("Enter your Anthropic API key (sk-ant-...): ")?;
-    if !api_key.is_empty() {
-        store_api_key(&api_key).context("failed to store API key in OS keychain")?;
-        println!("API key stored securely in OS keychain.");
-    } else {
-        println!("Skipped API key storage — set TALON_API_KEY env var to override.");
+    // Web console token: generate once, preserve forever (fail-closed API
+    // means no token = no /api/v1, so first-run must not leave it blank).
+    match ensure_api_token(&config_path) {
+        Ok(true) => println!(
+            "Generated [gateway] api_token — the web console (localhost-only by default) \
+             requires it as a Bearer token."
+        ),
+        Ok(false) => {}
+        Err(e) => tracing::warn!("could not ensure [gateway] api_token: {e}"),
+    }
+
+    // Vault master key — credential first, then keygen (criterion 1).
+    // Failure here must not abort provider setup.
+    if let Err(e) = secret_cli::init_vault_bootstrap(&talon_dir) {
+        tracing::warn!("vault bootstrap failed: {e}");
+        println!("Vault setup failed ({e}) — rerun `talon init` after fixing the issue.");
+    }
+
+    match wizard::run_provider_wizard().await {
+        Ok(Some(cfg)) => {
+            let existing = std::fs::read_to_string(&config_path)
+                .unwrap_or_else(|_| default_config().to_string());
+            let merged = wizard::merge_llm_into_config(&existing, &cfg)?;
+            std::fs::write(&config_path, merged)
+                .with_context(|| format!("failed to write {}", config_path.display()))?;
+            println!("Saved provider chain to {}", config_path.display());
+        }
+        Ok(None) => {
+            println!("No providers selected — rerun `talon init` or set TALON_LLM_PROVIDER.");
+        }
+        Err(e) => {
+            // Non-interactive terminal (CI, piped stdin) or cancellation: fall
+            // back to the env-var path rather than failing init.
+            tracing::warn!("provider wizard skipped: {e}");
+            println!("Skipped interactive setup — set TALON_LLM_PROVIDER + TALON_LLM_API_KEY.");
+        }
     }
 
     println!("\nTalon initialized. Run: talon --message \"hello\"");
     Ok(())
+}
+
+/// Insert a generated `[gateway] api_token` into the config if absent.
+/// Returns `true` when a new token was written; an existing token is never
+/// touched. The token is random (UUIDv4, no dashes) — not derived from
+/// anything on the machine.
+fn ensure_api_token(config_path: &std::path::Path) -> Result<bool> {
+    let existing = std::fs::read_to_string(config_path)
+        .with_context(|| format!("failed to read {}", config_path.display()))?;
+    let mut doc: toml::Table =
+        toml::from_str(&existing).context("config.toml is not valid TOML")?;
+
+    let gateway = doc
+        .entry("gateway")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let table = gateway
+        .as_table_mut()
+        .context("[gateway] is not a table in config.toml")?;
+    let has_token = table
+        .get("api_token")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.trim().is_empty());
+    if has_token {
+        return Ok(false);
+    }
+
+    let token = format!("talon_{}", uuid::Uuid::new_v4().simple());
+    table.insert("api_token".to_string(), toml::Value::String(token));
+    let merged = toml::to_string_pretty(&doc).context("serialize merged config")?;
+    std::fs::write(config_path, merged)
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+    Ok(true)
 }
 
 async fn cmd_db(action: DbAction) -> Result<()> {
@@ -327,32 +410,98 @@ async fn cmd_doctor() -> Result<()> {
     Ok(())
 }
 
-/// Resolve the LLM provider name and (possibly empty) API key from env +
-/// keychain. Returns `Ok(None)` when a key is required but missing — the caller
-/// prints guidance and exits cleanly. Shared by `cmd_run` and `cmd_serve`.
-fn resolve_provider_and_key() -> Result<Option<(String, String)>> {
+/// Resolve the LLM provider to use. Prefers the `[llm]` chain in
+/// `~/.talon/config.toml` (written by `talon init`); a multi-entry chain
+/// becomes a [`FallbackProvider`]. With no config it falls back to the
+/// `TALON_LLM_PROVIDER`/`TALON_LLM_API_KEY` env path. Returns `Ok(None)` when a
+/// key is required but missing — the caller prints guidance and exits cleanly.
+/// Shared by `cmd_run` and `cmd_serve`.
+fn resolve_provider() -> Result<Option<Arc<dyn LlmProvider>>> {
+    let cfg = talon_home()
+        .map(|p| LlmConfig::load(&p.join("config.toml")))
+        .unwrap_or_default();
+
+    if !cfg.is_empty() {
+        let mut providers: Vec<Arc<dyn LlmProvider>> = Vec::with_capacity(cfg.chain.len());
+        for choice in &cfg.chain {
+            providers.push(build_provider_from_choice(choice)?);
+        }
+        let provider: Arc<dyn LlmProvider> = if providers.len() == 1 {
+            providers.remove(0)
+        } else {
+            Arc::new(FallbackProvider::new(providers))
+        };
+        return Ok(Some(provider));
+    }
+
+    // Legacy env path — no configured chain.
     let provider_name =
         std::env::var("TALON_LLM_PROVIDER").unwrap_or_else(|_| "anthropic".to_string());
-
-    // Key-less providers (github-copilot, claude-code) don't need TALON_LLM_API_KEY.
     let needs_api_key = matches!(provider_name.as_str(), "anthropic" | "openai");
 
-    if !needs_api_key {
-        return Ok(Some((provider_name, String::new())));
-    }
+    let key = if needs_api_key {
+        let k = std::env::var("TALON_LLM_API_KEY")
+            .ok()
+            .or_else(|| load_provider_key(&provider_name))
+            .unwrap_or_default();
+        if k.is_empty() {
+            println!(
+                "No provider configured. Run `talon init`, set TALON_LLM_API_KEY, \
+                 or use a key-less provider: TALON_LLM_PROVIDER=github-copilot"
+            );
+            return Ok(None);
+        }
+        k
+    } else {
+        String::new()
+    };
 
-    let key = std::env::var("TALON_LLM_API_KEY")
-        .ok()
-        .or_else(load_api_key)
-        .unwrap_or_default();
-    if key.is_empty() {
-        println!(
-            "API key not configured. Run `talon init`, set TALON_LLM_API_KEY, \
-             or use a key-less provider: TALON_LLM_PROVIDER=github-copilot"
-        );
-        return Ok(None);
+    Ok(Some(build_single_provider(&provider_name, key)?))
+}
+
+/// Construct a provider for one chain entry, resolving its key from the
+/// keychain and honoring model/base_url overrides.
+fn build_provider_from_choice(choice: &ProviderChoice) -> Result<Arc<dyn LlmProvider>> {
+    let preset = talon_llm::presets::find(&choice.provider)
+        .with_context(|| format!("unknown provider '{}'", choice.provider))?;
+
+    let key = if preset.needs_api_key() {
+        load_provider_key(preset.name).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    match preset.name {
+        "github-copilot" => {
+            Ok(Arc::new(GitHubCopilotProvider::new().map_err(|e| {
+                anyhow::anyhow!("GitHub Copilot auth failed: {e}")
+            })?))
+        }
+        "anthropic" => Ok(Arc::new(AnthropicProvider::new(key))),
+        _ if preset.openai_compatible => {
+            let base_url = choice.base_url.as_deref().unwrap_or(preset.base_url);
+            let model = choice.model.as_deref().unwrap_or(preset.default_model);
+            Ok(Arc::new(OpenAiCompatProvider::new(
+                base_url.to_string(),
+                key,
+                model.to_string(),
+            )))
+        }
+        other => anyhow::bail!("provider '{other}' is not supported in this build"),
     }
-    Ok(Some((provider_name, key)))
+}
+
+/// Construct a single provider from the legacy env path.
+fn build_single_provider(provider_name: &str, api_key: String) -> Result<Arc<dyn LlmProvider>> {
+    match provider_name {
+        "github-copilot" | "copilot" => {
+            Ok(Arc::new(GitHubCopilotProvider::new().map_err(|e| {
+                anyhow::anyhow!("GitHub Copilot auth failed: {e}")
+            })?))
+        }
+        // "anthropic" and anything else defaults to Anthropic.
+        _ => Ok(Arc::new(AnthropicProvider::new(api_key))),
+    }
 }
 
 async fn cmd_run(
@@ -361,12 +510,12 @@ async fn cmd_run(
     gateway_flag: String,
     accessible: bool,
 ) -> Result<()> {
-    let (provider_name, api_key) = match resolve_provider_and_key()? {
-        Some(pair) => pair,
+    let provider = match resolve_provider()? {
+        Some(p) => p,
         None => return Ok(()),
     };
 
-    let ctx = build_gateway_context(&provider_name, api_key).await?;
+    let ctx = build_gateway_context(provider).await?;
     let ctx = Arc::new(ctx);
 
     // Single-turn mode: --message "..." skips the interactive REPL.
@@ -379,21 +528,59 @@ async fn cmd_run(
     }
 
     // Multi-turn mode: choose gateway based on --gateway flag.
-    let gateway = select_gateway(&gateway_flag, &ctx, accessible)?;
+    let gateway = select_gateway(&gateway_flag, &ctx, accessible, None)?;
     gateway.run().await.map_err(|e| anyhow::anyhow!("{e}"))
 }
 
+/// `[gateway]` settings from `~/.talon/config.toml` that the daemon needs.
+struct GatewayConfig {
+    http_addr: String,
+    api_token: Option<String>,
+}
+
+/// Read `[gateway] http_addr` / `api_token` from the config file. Missing
+/// file, section, or keys are all normal — defaults apply (and no token means
+/// the web console fail-closes to "not mounted").
+fn load_gateway_config() -> GatewayConfig {
+    let table = talon_home()
+        .ok()
+        .map(|p| p.join("config.toml"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|raw| toml::from_str::<toml::Table>(&raw).ok());
+    let gateway = table.as_ref().and_then(|t| t.get("gateway"));
+    let get_str = |key: &str| -> Option<String> {
+        gateway
+            .and_then(|g| g.get(key))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .filter(|s| !s.trim().is_empty())
+    };
+    GatewayConfig {
+        http_addr: get_str("http_addr").unwrap_or_else(|| "127.0.0.1:7777".to_string()),
+        api_token: get_str("api_token"),
+    }
+}
+
 /// Build the foreground gateway selected by `--gateway`. "cli" and any unknown
-/// value fall back to CLI. Shared by `cmd_run` and `cmd_serve`.
+/// value fall back to CLI. Shared by `cmd_run` and `cmd_serve`. `web` mounts
+/// the console API on the HTTP gateway (only `cmd_serve` passes it).
 fn select_gateway(
     gateway_flag: &str,
     ctx: &Arc<GatewayContext>,
     accessible: bool,
+    web: Option<WebState>,
 ) -> Result<Arc<dyn Gateway>> {
     let gateway: Arc<dyn Gateway> = match gateway_flag {
         "http" => {
-            let addr = "127.0.0.1:7777".parse().context("invalid HTTP addr")?;
-            Arc::new(HttpGateway::new(Arc::clone(ctx), addr))
+            let addr = load_gateway_config()
+                .http_addr
+                .parse()
+                .context("invalid [gateway] http_addr")?;
+            let mut gw = HttpGateway::new(Arc::clone(ctx), addr);
+            if let Some(web) = web {
+                gw = gw.with_web(web);
+            }
+            Arc::new(gw)
         }
         "tui" => Arc::new(TuiGateway::new(Arc::clone(ctx), accessible, "talon")),
         #[cfg(feature = "telegram")]
@@ -414,15 +601,7 @@ fn select_gateway(
     Ok(gateway)
 }
 
-async fn build_gateway_context(provider_name: &str, api_key: String) -> Result<GatewayContext> {
-    let provider: Arc<dyn LlmProvider> = match provider_name {
-        "github-copilot" | "copilot" => Arc::new(
-            GitHubCopilotProvider::new()
-                .map_err(|e| anyhow::anyhow!("GitHub Copilot auth failed: {e}"))?,
-        ),
-        // "anthropic" and anything else defaults to Anthropic.
-        _ => Arc::new(AnthropicProvider::new(api_key)),
-    };
+async fn build_gateway_context(provider: Arc<dyn LlmProvider>) -> Result<GatewayContext> {
     let mut ctx = GatewayContext::new(provider);
 
     // Register built-in tools.
@@ -481,6 +660,26 @@ async fn build_gateway_context(provider_name: &str, api_key: String) -> Result<G
                 Err(e) => tracing::warn!("mcp '{}' tools/list failed: {e}", entry.name),
             },
             Err(e) => tracing::warn!("mcp '{}' connect failed: {e}", entry.name),
+        }
+    }
+
+    // Phase 6 WASM skills from ~/.talon/skills/ (opt-in `skills` feature). Each
+    // loaded skill is registered as a tool at startup. Live hot-reload into the
+    // running dispatcher is a follow-up; the SkillStore itself supports reload.
+    #[cfg(feature = "skills")]
+    if let Ok(skills_dir) = talon_home().map(|p| p.join("skills")) {
+        match talon_plugins::PluginHost::new() {
+            Ok(host) => {
+                let store = talon_plugins::SkillStore::new(Arc::new(host), skills_dir);
+                let tools = store.tools();
+                if !tools.is_empty() {
+                    tracing::info!("skills: loaded {} skill(s)", tools.len());
+                }
+                for tool in tools {
+                    ctx = ctx.with_tool(tool);
+                }
+            }
+            Err(e) => tracing::warn!("skills: plugin host init failed: {e}"),
         }
     }
 
@@ -563,11 +762,25 @@ fn parse_deliver_target(s: &str) -> DeliverTarget {
 /// only safe default is to refuse escalation.
 struct TalonJobRunner {
     ctx: Arc<GatewayContext>,
+    /// Web console approval path (§4.4 A). `None` → immediate deny, as before.
+    approvals: Option<ApprovalBroker>,
+    /// Web console live feed; approval escalations are announced here.
+    events: Option<broadcast::Sender<RunEvent>>,
+    /// JIT secret resolution (criteria 10–11). `None` → prompts pass through
+    /// unchanged (no secrets subsystem configured).
+    resolver: Option<Arc<talon_secrets::SecretResolver>>,
 }
+
+/// How long an out-of-scope escalation waits for a ✅/❌ from the console
+/// before it is denied ("skipped: out of granted scope").
+const APPROVAL_TIMEOUT_SECS: u64 = 120;
 
 impl JobRunner for TalonJobRunner {
     fn run(&self, job: CronJob) -> Pin<Box<dyn Future<Output = JobOutcome> + Send + '_>> {
         let ctx = Arc::clone(&self.ctx);
+        let approvals = self.approvals.clone();
+        let events = self.events.clone();
+        let resolver = self.resolver.clone();
         Box::pin(async move {
             let (tx, mut rx) = mpsc::channel::<AgentEvent>(64);
             // Run unattended under the job's pre-authorized scope: out-of-scope
@@ -577,9 +790,37 @@ impl JobRunner for TalonJobRunner {
                 .with_unattended_scope(job.granted_scope.clone());
 
             let session_id = job.session_id.clone();
-            let prompt = job.prompt.clone();
             let deliver_to = job.deliver_to.clone();
+            let job_id = job.id.clone();
             let job_label = job.name.clone().unwrap_or_else(|| job.id.clone());
+
+            // JIT secret resolution (criteria 10–11): the resolved prompt goes
+            // to the agent only; every resolved value is registered for
+            // redaction for the lifetime of this run. An unresolvable
+            // reference aborts the run before the LLM is ever called, with an
+            // error naming the reference — never a value.
+            let mut _redaction_guards = Vec::new();
+            let prompt = match &resolver {
+                Some(r) => match r.resolve_all(&job.prompt).await {
+                    Ok(resolved) => {
+                        for (name, value) in &resolved.values {
+                            _redaction_guards.push(
+                                talon_secrets::redact::global().register(name, value.expose()),
+                            );
+                        }
+                        resolved.text
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            job = %job_label,
+                            error = %e,
+                            "secret resolution failed — run aborted before dispatch"
+                        );
+                        return JobOutcome::failed_with(format!("secret resolution failed: {e}"));
+                    }
+                },
+                None => job.prompt.clone(),
+            };
 
             // Drive the agent on its own task so we can drain events concurrently;
             // the channel closes when the agent (and its tx) drop.
@@ -592,6 +833,7 @@ impl JobRunner for TalonJobRunner {
 
             let mut output = String::new();
             let mut succeeded = false;
+            let mut error: Option<String> = None;
             while let Some(event) = rx.recv().await {
                 match event {
                     AgentEvent::Text { content } => {
@@ -600,18 +842,73 @@ impl JobRunner for TalonJobRunner {
                         }
                         output.push_str(&content);
                     }
-                    AgentEvent::ApprovalRequested { tx, tool_name, .. } => {
-                        tracing::warn!(
-                            job = %job_label,
-                            tool = %tool_name,
-                            "scheduled job requested tool approval — denying (unattended)"
-                        );
-                        let _ = tx.send(false);
-                    }
+                    AgentEvent::ApprovalRequested {
+                        call_id,
+                        tool_name,
+                        args,
+                        tx,
+                        ..
+                    } => match &approvals {
+                        // Web console attached: park the approval (§4.4 A) —
+                        // resolved by POST /approvals/{call_id} or denied on
+                        // timeout. The run blocks on its own task meanwhile.
+                        Some(broker) => {
+                            tracing::warn!(
+                                job = %job_label,
+                                tool = %tool_name,
+                                call_id = %call_id,
+                                "out-of-scope tool call — escalating to web console"
+                            );
+                            broker.register(
+                                PendingApproval::new(
+                                    call_id.clone(),
+                                    Some(job_id.clone()),
+                                    tool_name.clone(),
+                                    args.clone(),
+                                ),
+                                tx,
+                            );
+                            if let Some(ev) = &events {
+                                let _ = ev.send(RunEvent::ApprovalPending {
+                                    call_id: call_id.clone(),
+                                    job_id: Some(job_id.clone()),
+                                    tool: tool_name,
+                                    args,
+                                });
+                            }
+                            let broker = broker.clone();
+                            let ev = events.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep(Duration::from_secs(APPROVAL_TIMEOUT_SECS))
+                                    .await;
+                                if broker.deny_if_pending(&call_id) {
+                                    tracing::warn!(
+                                        call_id = %call_id,
+                                        "approval timed out — denied (out of granted scope)"
+                                    );
+                                    if let Some(ev) = ev {
+                                        let _ = ev.send(RunEvent::ApprovalResolved {
+                                            call_id,
+                                            approved: false,
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                        None => {
+                            tracing::warn!(
+                                job = %job_label,
+                                tool = %tool_name,
+                                "scheduled job requested tool approval — denying (unattended)"
+                            );
+                            let _ = tx.send(false);
+                        }
+                    },
                     AgentEvent::Completed => succeeded = true,
                     AgentEvent::Failed(msg) => {
                         tracing::error!(job = %job_label, error = %msg, "scheduled job failed");
                         succeeded = false;
+                        error = Some(msg);
                     }
                     _ => {}
                 }
@@ -621,7 +918,16 @@ impl JobRunner for TalonJobRunner {
             if let Ok(Err(e)) = handle.await {
                 tracing::error!(job = %job_label, error = %e, "agent run errored");
                 succeeded = false;
+                error = Some(e);
             }
+
+            // Scrub the outcome at the choke point (criterion 10): these
+            // fields become cron_runs.output / .error / last_output, so no
+            // resolved value may survive past this line. Guards are still
+            // alive here — scrub must precede their drop.
+            let registry = talon_secrets::redact::global();
+            let output = registry.scrub_owned(output);
+            let error = error.map(|e| registry.scrub_owned(e));
 
             let final_output = (!output.is_empty()).then_some(output.clone());
             deliver(&job_label, &deliver_to, final_output.as_deref()).await;
@@ -629,10 +935,155 @@ impl JobRunner for TalonJobRunner {
             if succeeded {
                 JobOutcome::ok(final_output)
             } else {
-                JobOutcome::failed()
+                match error {
+                    Some(e) => JobOutcome::failed_with(e),
+                    None => JobOutcome::failed(),
+                }
             }
         })
     }
+}
+
+/// Build the daemon's secret resolver: `env` always; the builtin vault when
+/// it is bootstrapped AND unlockable without a prompt (keychain or
+/// `TALON_MASTER_KEY` — a daemon never blocks on a passphrase). A locked
+/// vault is logged loudly; `{{secret:NAME}}` refs then fail their runs with
+/// an actionable error (criterion 2), never silently. External providers
+/// register only when their cargo feature is compiled in AND their
+/// `[secrets.*]` config section exists — otherwise the scheme stays
+/// unregistered and refs fail with a typed unknown-scheme error.
+async fn build_secret_resolver(
+    db: Option<Arc<Database>>,
+) -> (
+    Arc<talon_secrets::SecretResolver>,
+    Option<Arc<talon_secrets::BuiltinVault>>,
+) {
+    use talon_secrets::{BuiltinVault, EnvProvider, MasterKeyStore, OsKeychain, SecretResolver};
+
+    let mut resolver = SecretResolver::new();
+    resolver.register(Arc::new(EnvProvider));
+    let mut vault_handle = None;
+
+    if let (Some(db), Ok(home)) = (db, talon_home()) {
+        let keychain = OsKeychain;
+        let key_store = MasterKeyStore::new(&home, &keychain);
+        let env_value = std::env::var(talon_secrets::ENV_VAR).ok();
+        match key_store.is_bootstrapped() {
+            // Criterion 2 headless path: TALON_MASTER_KEY alone is a valid
+            // unlock source even when no wrapped copy exists on this machine.
+            Ok(bootstrapped) if bootstrapped || env_value.is_some() => {
+                match key_store.unlock(env_value.as_deref(), None) {
+                    Ok(master) => {
+                        // One vault, two consumers: the resolver (job refs)
+                        // and the web console secrets API.
+                        let vault = Arc::new(BuiltinVault::new(db, master));
+                        resolver
+                            .register(Arc::clone(&vault) as Arc<dyn talon_secrets::SecretProvider>);
+                        vault_handle = Some(vault);
+                        tracing::info!("builtin secret vault unlocked");
+                    }
+                    Err(e) => tracing::warn!(
+                        "vault locked: {e} — jobs using {{{{secret:NAME}}}} will fail until unlocked"
+                    ),
+                }
+            }
+            Ok(_) => {
+                tracing::debug!(
+                    "no vault master key — builtin secrets disabled (run `talon init` or set TALON_MASTER_KEY)"
+                );
+            }
+            Err(e) => tracing::warn!("vault state check failed: {e}"),
+        }
+    }
+
+    #[cfg(feature = "vault")]
+    if let Some(cfg) = load_hashicorp_vault_config() {
+        resolver.register(Arc::new(talon_secrets::VaultProvider::new(cfg)));
+        tracing::info!("hashicorp vault secret provider registered (secret://vault/…)");
+    }
+
+    #[cfg(feature = "aws-secrets")]
+    if let Some(region) = load_aws_secrets_config() {
+        let provider = talon_secrets::AwsProvider::from_default_chain(region).await;
+        resolver.register(Arc::new(provider));
+        tracing::info!("aws secrets manager provider registered (secret://aws/…)");
+    }
+
+    (Arc::new(resolver), vault_handle)
+}
+
+/// `[runs] retention_days` from config.toml (criterion 31); `None` = never
+/// prune.
+fn load_retention_days() -> Option<i64> {
+    let cfg = talon_home().ok()?.join("config.toml");
+    let text = std::fs::read_to_string(cfg).ok()?;
+    let table: toml::Value = text.parse().ok()?;
+    table
+        .get("runs")?
+        .get("retention_days")?
+        .as_integer()
+        .filter(|n| *n > 0)
+}
+
+/// `[webhooks] rate_per_min` from config.toml (criterion 27); `None` keeps
+/// the built-in default.
+fn load_webhook_rate() -> Option<u32> {
+    let cfg = talon_home().ok()?.join("config.toml");
+    let text = std::fs::read_to_string(cfg).ok()?;
+    let table: toml::Value = text.parse().ok()?;
+    table
+        .get("webhooks")?
+        .get("rate_per_min")?
+        .as_integer()
+        .and_then(|n| u32::try_from(n).ok())
+}
+
+/// `[secrets]` table from `~/.talon/config.toml`, when readable.
+#[cfg(any(feature = "vault", feature = "aws-secrets"))]
+fn load_secrets_table() -> Option<toml::Value> {
+    let cfg = talon_home().ok()?.join("config.toml");
+    let text = std::fs::read_to_string(cfg).ok()?;
+    let table: toml::Value = text.parse().ok()?;
+    table.get("secrets").cloned()
+}
+
+/// `[secrets.vault]`: `addr` + `role_id` required; the AppRole secret-id is
+/// read from the env var named by `secret_id_env` (default
+/// `VAULT_SECRET_ID`) — never from config.toml.
+#[cfg(feature = "vault")]
+fn load_hashicorp_vault_config() -> Option<talon_secrets::VaultConfig> {
+    let vault = load_secrets_table()?.get("vault")?.clone();
+    let addr = vault.get("addr")?.as_str()?.to_string();
+    let role_id = vault.get("role_id")?.as_str()?.to_string();
+    let secret_id_env = vault
+        .get("secret_id_env")
+        .and_then(|v| v.as_str())
+        .unwrap_or("VAULT_SECRET_ID");
+    match std::env::var(secret_id_env) {
+        Ok(secret_id) if !secret_id.trim().is_empty() => Some(talon_secrets::VaultConfig {
+            addr,
+            role_id,
+            secret_id,
+        }),
+        _ => {
+            tracing::warn!(
+                "[secrets.vault] configured but {secret_id_env} is unset — vault provider disabled"
+            );
+            None
+        }
+    }
+}
+
+/// `[secrets.aws]` present → enabled; returns the optional `region` override.
+/// Credentials come from the SDK default chain — nothing secret in config.
+#[cfg(feature = "aws-secrets")]
+fn load_aws_secrets_config() -> Option<Option<String>> {
+    let aws = load_secrets_table()?.get("aws")?.clone();
+    Some(
+        aws.get("region")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+    )
 }
 
 /// Route a finished job's output to its target. Phase 3 logs the delivery; live
@@ -648,19 +1099,27 @@ async fn deliver(job_label: &str, deliver_to: &str, output: Option<&str>) {
     );
 }
 
-async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
-    let (provider_name, api_key) = match resolve_provider_and_key()? {
-        Some(pair) => pair,
+async fn cmd_serve(
+    gateway_flag: String,
+    accessible: bool,
+    log_ring: Arc<talon_gateway::web::logs::LogRing>,
+) -> Result<()> {
+    let provider = match resolve_provider()? {
+        Some(p) => p,
         None => return Ok(()),
     };
 
-    let ctx = Arc::new(build_gateway_context(&provider_name, api_key).await?);
+    let ctx = Arc::new(build_gateway_context(provider).await?);
 
     let db = ctx
         .db
         .clone()
         .context("serve requires a database — none was opened")?;
-    let store = CronStore::new(db);
+    let store = CronStore::new(Arc::clone(&db));
+    let token_store = TokenStore::new(Arc::clone(&db));
+    let hook_store = talon_memory::WebhookStore::new(Arc::clone(&db));
+    let audit_store = talon_memory::AuditStore::new(Arc::clone(&db));
+    let run_store = RunStore::new(db);
 
     let tick_secs = std::env::var("TALON_SCHEDULER_TICK_SECS")
         .ok()
@@ -668,10 +1127,82 @@ async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
         .filter(|n| *n > 0)
         .unwrap_or(DEFAULT_SCHEDULER_TICK_SECS);
 
+    // Web console plumbing: live event feed + approval broker. The console
+    // itself only mounts when [gateway] api_token is configured (fail closed).
+    let gateway_cfg = load_gateway_config();
+    let (event_tx, _) = broadcast::channel::<RunEvent>(EVENT_CHANNEL_CAP);
+    let approvals = ApprovalBroker::new();
+
+    let (secret_resolver, secret_vault) = build_secret_resolver(ctx.db.clone()).await;
     let runner = Arc::new(TalonJobRunner {
         ctx: Arc::clone(&ctx),
+        approvals: gateway_cfg.api_token.is_some().then(|| approvals.clone()),
+        events: Some(event_tx.clone()),
+        resolver: Some(secret_resolver),
     });
-    let scheduler = Scheduler::new(store, runner).with_tick(Duration::from_secs(tick_secs));
+    let mut scheduler = Scheduler::new(store.clone(), runner)
+        .with_tick(Duration::from_secs(tick_secs))
+        .with_run_store(run_store.clone())
+        .with_events(event_tx.clone());
+    // Retention (criterion 31): absent config = no pruning, ever.
+    if let Some(days) = load_retention_days() {
+        scheduler = scheduler.with_retention_days(days);
+        tracing::info!(retention_days = days, "run-history retention enabled");
+    }
+    let sched_handle = scheduler.handle();
+
+    let web_state = match &gateway_cfg.api_token {
+        Some(token) => {
+            // Criterion 6: the static token still works (implicit admin), but
+            // named tokens are the way forward — say so once at startup.
+            tracing::warn!(
+                "[gateway] api_token is a legacy single-token credential — prefer named \
+                 tokens (`talon token create NAME --role admin|viewer`)"
+            );
+            let mut state = WebState::new(
+                Arc::clone(&ctx),
+                store,
+                run_store,
+                sched_handle,
+                event_tx,
+                approvals,
+                token_store,
+                hook_store,
+                token,
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .with_log_ring(log_ring)
+            .with_audit(audit_store);
+
+            if let Some(per_min) = load_webhook_rate() {
+                state = state.with_hook_rate(per_min);
+            }
+
+            if let Some(vault) = secret_vault {
+                state = state.with_secret_vault(vault);
+            }
+
+            // Prometheus recorder (criterion 19): installed once per process;
+            // scheduler metrics flow through the `metrics` facade either way.
+            match metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder() {
+                Ok(handle) => {
+                    state = state.with_metrics(Arc::new(move || handle.render()));
+                }
+                Err(e) => {
+                    tracing::warn!("prometheus recorder install failed: {e} — /metrics disabled")
+                }
+            }
+
+            Some(state)
+        }
+        None => {
+            tracing::warn!(
+                "no [gateway] api_token in config.toml — web console API not mounted \
+                 (run `talon init` to generate one)"
+            );
+            None
+        }
+    };
 
     let cancel = CancellationToken::new();
     let tracker = TaskTracker::new();
@@ -684,9 +1215,32 @@ async fn cmd_serve(gateway_flag: String, accessible: bool) -> Result<()> {
     };
 
     // Foreground gateway — aborted on shutdown; the scheduler is what we drain.
-    let gateway = select_gateway(&gateway_flag, &ctx, accessible)?;
+    // The web console rides the HTTP gateway: foreground when --gateway http,
+    // otherwise as an extra background server so `talon serve` always exposes it.
+    let (foreground_web, background_web) = if gateway_flag == "http" {
+        (web_state, None)
+    } else {
+        (None, web_state)
+    };
+    let gateway = select_gateway(&gateway_flag, &ctx, accessible, foreground_web)?;
     let gateway_handle =
         tokio::spawn(async move { gateway.run().await.map_err(|e| e.to_string()) });
+
+    let _web_handle = background_web.map(|web| {
+        let addr = gateway_cfg.http_addr.clone();
+        let ctx = Arc::clone(&ctx);
+        tokio::spawn(async move {
+            match addr.parse() {
+                Ok(addr) => {
+                    let gw = HttpGateway::new(ctx, addr).with_web(web);
+                    if let Err(e) = gw.run().await {
+                        tracing::error!(error = %e, "web console HTTP server failed");
+                    }
+                }
+                Err(e) => tracing::error!(error = %e, "invalid [gateway] http_addr"),
+            }
+        })
+    });
 
     tracing::info!(
         gateway = %gateway_flag,
@@ -746,14 +1300,6 @@ async fn shutdown_signal() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn init_tracing(level: &str) -> Result<()> {
-    use tracing_subscriber::{EnvFilter, fmt};
-    let filter = EnvFilter::try_new(level).or_else(|_| EnvFilter::try_new("info"))?;
-
-    fmt().with_env_filter(filter).with_target(false).init();
-    Ok(())
-}
-
 fn default_db_path() -> PathBuf {
     talon_home()
         .map(|p| p.join("talon.db"))
@@ -798,32 +1344,28 @@ ltm_enabled = false
 http_addr = "127.0.0.1:7777"
 # Telegram — set token via TELEGRAM_BOT_TOKEN env var
 telegram_enabled = false
+# Web console bearer token — generated by `talon init`; /api/v1 does not
+# mount without it. v1 SSE auth uses ?token= (EventSource cannot set headers);
+# keep the bind localhost unless you terminate TLS in front.
+# api_token = "talon_..."
 "#
 }
 
-fn prompt_secret(prompt: &str) -> Result<String> {
-    print!("{}", prompt);
-    io::stdout().flush().context("failed to flush stdout")?;
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .context("failed to read input")?;
-    Ok(input.trim().to_string())
-}
-
-fn store_api_key(key: &str) -> Result<()> {
+/// Store a provider's API key in the OS keychain under `<provider>-api-key`.
+fn store_provider_key(provider: &str, key: &str) -> Result<()> {
     use keyring::Entry;
-    let entry =
-        Entry::new("talon", "anthropic-api-key").context("failed to create keyring entry")?;
+    let entry = Entry::new("talon", &format!("{provider}-api-key"))
+        .context("failed to create keyring entry")?;
     entry
         .set_password(key)
         .context("failed to store password")?;
     Ok(())
 }
 
-fn load_api_key() -> Option<String> {
+/// Load a provider's API key from the OS keychain, if present and non-empty.
+fn load_provider_key(provider: &str) -> Option<String> {
     use keyring::Entry;
-    Entry::new("talon", "anthropic-api-key")
+    Entry::new("talon", &format!("{provider}-api-key"))
         .ok()
         .and_then(|e| e.get_password().ok())
         .filter(|k| !k.is_empty())
@@ -1123,6 +1665,28 @@ mod tests {
     #[test]
     fn default_config_provider_is_anthropic() {
         assert!(default_config().contains("provider = \"anthropic\""));
+    }
+
+    // ── provider chain construction (W7) ──────────────────────────────────────
+
+    #[test]
+    fn build_provider_from_choice_rejects_unknown() {
+        let choice = ProviderChoice::new("not-a-real-provider");
+        assert!(build_provider_from_choice(&choice).is_err());
+    }
+
+    #[test]
+    fn build_provider_from_choice_builds_anthropic() {
+        // AnthropicProvider::new does no network/auth — construction must succeed.
+        let choice = ProviderChoice::new("anthropic");
+        assert!(build_provider_from_choice(&choice).is_ok());
+    }
+
+    #[test]
+    fn build_provider_from_choice_builds_openai_compatible() {
+        // OpenAiCompatProvider::new only builds an HTTP client — no network.
+        let choice = ProviderChoice::new("openrouter");
+        assert!(build_provider_from_choice(&choice).is_ok());
     }
 
     // ── stub command handlers ─────────────────────────────────────────────────

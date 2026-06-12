@@ -7,6 +7,7 @@ members = [
     "crates/talon-tools",
     "crates/talon-gateway",
     "crates/talon-plugins",
+    "crates/talon-secrets",
 ]
 resolver = "2"
 
@@ -38,6 +39,8 @@ reqwest          = { version = "0.12", default-features = false, features = ["ru
 
 # Web framework
 axum             = "0.8"
+# Embedded web console assets (web-ui feature) — web/dist compiled into the binary
+rust-embed       = "8"
 
 # Database — SQLite (bundled, FTS5 via vtab feature)
 rusqlite         = { version = "0.32", features = ["bundled", "vtab"] }
@@ -59,10 +62,22 @@ teloxide         = { version = "0.17", features = ["macros"] }
 clap             = { version = "4",    features = ["derive"] }
 
 # WASM plugin host (Phase 6, feature-flagged)
+# wasmtime + wasmtime-wasi release in lockstep — keep versions equal. The `wasm`
+# feature requires rustc ≥ 1.93 (wasmtime 45 MSRV); the rest of the workspace
+# keeps its 1.88 promise since these are pulled only under that opt-in feature.
 wasmtime         = "45"
+wasmtime-wasi    = "45"
+notify           = "8"
 
 # OS keychain
 keyring          = "3"
+
+# Builtin vault crypto (talon-secrets) — audited RustCrypto crates
+aes-gcm          = "0.10"
+argon2           = "0.5"
+base64           = "0.22"
+sha2             = "0.10"
+hmac             = "0.12"
 
 # Error handling
 thiserror        = "2"
@@ -70,7 +85,12 @@ anyhow           = "1"
 
 # Observability
 tracing              = "0.1"
-tracing-subscriber   = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber   = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender     = "0.2"
+# Metrics facade — recorder-less calls are no-ops; the Prometheus recorder is
+# installed only by `talon serve` (web console /metrics).
+metrics                      = "0.24"
+metrics-exporter-prometheus  = { version = "0.16", default-features = false }
 
 # Identifiers + time
 uuid       = { version = "1", features = ["v4"] }

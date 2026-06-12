@@ -2,6 +2,8 @@
 
 # Rust build artifacts
 /target/
+# Nested target dirs (e.g. standalone example skill crates outside the workspace)
+**/target/
 **/*.rs.bk
 
 # Sensitive config (keys live in OS keychain, not files)

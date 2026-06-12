@@ -1,0 +1,43 @@
+[package]
+name        = "talon-secrets"
+description = "SecretProvider trait, secret reference parsing, builtin encrypted vault, and JIT resolution."
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+rust-version.workspace = true
+
+[dependencies]
+talon-memory = { path = "../talon-memory" }
+
+tokio.workspace     = true
+rusqlite.workspace  = true
+aho-corasick        = "1"
+chrono.workspace    = true
+thiserror.workspace = true
+tracing.workspace   = true
+keyring.workspace   = true
+aes-gcm.workspace   = true
+argon2.workspace    = true
+base64.workspace    = true
+
+# feature = "vault" — HashiCorp Vault KV v2 (AppRole auth, read-only)
+reqwest    = { workspace = true, optional = true }
+serde      = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+# feature = "aws-secrets" — AWS Secrets Manager (default credential chain, read-only).
+# `default-https-client` = the modern rustls(0.23) client; the legacy `rustls`
+# feature would drag in rustls 0.21 / rustls-webpki 0.101 (RUSTSEC-2026-0098/99/0104).
+aws-config                = { version = "1", optional = true, default-features = false, features = ["behavior-version-latest", "default-https-client"] }
+aws-sdk-secretsmanager    = { version = "1", optional = true, default-features = false, features = ["default-https-client"] }
+
+[features]
+vault       = ["dep:reqwest", "dep:serde", "dep:serde_json"]
+aws-secrets = ["dep:aws-config", "dep:aws-sdk-secretsmanager", "dep:serde_json"]
+
+[dev-dependencies]
+tokio    = { workspace = true, features = ["test-util"] }
+uuid     = { workspace = true }
+wiremock = "0.6"

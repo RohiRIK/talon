@@ -73,6 +73,14 @@ pub struct CronJob {
     pub last_output: Option<String>,
     pub next_run: Option<String>,
     pub created_at: String,
+    /// Retry policy (v9, criterion 28): a failed attempt is retried up to
+    /// this many times with exponential backoff. 0 = single attempt.
+    #[serde(default)]
+    pub retry_max: i64,
+    /// Error-handler job (v9, criterion 29): triggered once when the final
+    /// attempt fails. Handlers never cascade.
+    #[serde(default)]
+    pub on_failure: Option<String>,
 }
 
 impl CronJob {
@@ -100,7 +108,19 @@ impl CronJob {
             last_output: None,
             next_run: None,
             created_at: fmt_utc(Utc::now()),
+            retry_max: 0,
+            on_failure: None,
         }
+    }
+
+    pub fn with_retry_max(mut self, retry_max: i64) -> Self {
+        self.retry_max = retry_max.max(0);
+        self
+    }
+
+    pub fn with_on_failure(mut self, handler_id: Option<String>) -> Self {
+        self.on_failure = handler_id;
+        self
     }
 
     pub fn with_name(mut self, name: impl Into<String>) -> Self {
@@ -151,6 +171,8 @@ impl CronJob {
             last_output: row.get("last_output")?,
             next_run: row.get("next_run")?,
             created_at: row.get("created_at")?,
+            retry_max: row.get("retry_max")?,
+            on_failure: row.get("on_failure")?,
         })
     }
 }
@@ -169,6 +191,8 @@ impl CronStore {
     /// Insert a job, computing its first `next_run` from the schedule + tz.
     /// Returns the job with `next_run` populated.
     pub async fn create(&self, mut job: CronJob) -> Result<CronJob, MemoryError> {
+        self.validate_on_failure(&job.id, job.on_failure.as_deref())
+            .await?;
         let next = compute_next_run(&job.schedule, &job.tz, Utc::now())?;
         job.next_run = next.map(fmt_utc);
 
@@ -186,9 +210,10 @@ impl CronStore {
                     "INSERT INTO cron_jobs
                        (id, name, schedule, prompt, session_id, deliver_to, context_from,
                         granted_scope, enabled, tz, repeat, run_count, last_run, last_output,
-                        next_run, created_at)
+                        next_run, created_at, retry_max, on_failure)
                      VALUES
-                       (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                       (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
+                        ?17, ?18)",
                     params![
                         j.id,
                         j.name,
@@ -206,12 +231,67 @@ impl CronStore {
                         j.last_output,
                         j.next_run,
                         j.created_at,
+                        j.retry_max,
+                        j.on_failure,
                     ],
                 )?;
                 Ok(())
             })
             .await??;
         Ok(job)
+    }
+
+    /// Update the retry policy / error handler (criteria 28–29). Validation
+    /// lives here so every write path — API, CLI tool, flow commit — gets it.
+    pub async fn set_reliability(
+        &self,
+        id: &str,
+        retry_max: i64,
+        on_failure: Option<String>,
+    ) -> Result<(), MemoryError> {
+        self.get(id)
+            .await?
+            .ok_or_else(|| MemoryError::NotFound(format!("cron job {id}")))?;
+        self.validate_on_failure(id, on_failure.as_deref()).await?;
+
+        let retry_max = retry_max.max(0);
+        let id = id.to_string();
+        self.db
+            .pool()
+            .get()
+            .await?
+            .interact(move |conn| -> rusqlite::Result<()> {
+                conn.execute(
+                    "UPDATE cron_jobs SET retry_max = ?2, on_failure = ?3 WHERE id = ?1",
+                    params![id, retry_max, on_failure],
+                )?;
+                Ok(())
+            })
+            .await??;
+        Ok(())
+    }
+
+    /// Criterion 29: a job cannot be its own error handler, and the handler
+    /// must exist.
+    async fn validate_on_failure(
+        &self,
+        job_id: &str,
+        on_failure: Option<&str>,
+    ) -> Result<(), MemoryError> {
+        let Some(handler) = on_failure else {
+            return Ok(());
+        };
+        if handler == job_id {
+            return Err(MemoryError::Cron(
+                "a job cannot be its own on_failure handler".to_string(),
+            ));
+        }
+        if self.get(handler).await?.is_none() {
+            return Err(MemoryError::Cron(format!(
+                "on_failure handler does not exist: {handler}"
+            )));
+        }
+        Ok(())
     }
 
     /// Fetch a single job by id.
@@ -350,6 +430,35 @@ impl CronStore {
         Ok(())
     }
 
+    /// Replace a job's `context_from` dependency list (graph-editor edits).
+    /// Validation (ids exist, acyclic) is the caller's job — the store only
+    /// persists.
+    pub async fn set_context_from(
+        &self,
+        id: &str,
+        context_from: Vec<String>,
+    ) -> Result<(), MemoryError> {
+        self.get(id)
+            .await?
+            .ok_or_else(|| MemoryError::NotFound(format!("cron job {id}")))?;
+
+        let json = serde_json::to_string(&context_from)?;
+        let id = id.to_string();
+        self.db
+            .pool()
+            .get()
+            .await?
+            .interact(move |conn| -> rusqlite::Result<()> {
+                conn.execute(
+                    "UPDATE cron_jobs SET context_from = ?2 WHERE id = ?1",
+                    params![id, json],
+                )?;
+                Ok(())
+            })
+            .await??;
+        Ok(())
+    }
+
     /// Delete a job. Returns `true` if a row was removed.
     pub async fn delete(&self, id: &str) -> Result<bool, MemoryError> {
         let id = id.to_string();
@@ -369,7 +478,7 @@ impl CronStore {
 // ── Free helpers ────────────────────────────────────────────────────────────────
 
 /// UTC RFC3339 with a `Z` suffix and seconds precision — the canonical stored form.
-fn fmt_utc(dt: DateTime<Utc>) -> String {
+pub(crate) fn fmt_utc(dt: DateTime<Utc>) -> String {
     dt.to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
@@ -379,6 +488,13 @@ fn json_col<T: DeserializeOwned>(row: &Row<'_>, name: &str) -> rusqlite::Result<
     let raw: String = row.get(name)?;
     serde_json::from_str(&raw)
         .map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, Type::Text, Box::new(e)))
+}
+
+/// Validate a schedule + timezone without persisting anything — the exact
+/// computation `CronStore::create` runs. Lets API layers reject bad cron
+/// expressions or timezones with a 4xx before any row exists.
+pub fn validate_schedule(schedule: &CronSchedule, tz: &str) -> Result<(), MemoryError> {
+    compute_next_run(schedule, tz, Utc::now()).map(|_| ())
 }
 
 /// Compute the next run instant (in UTC) for a schedule evaluated in `tz`,
