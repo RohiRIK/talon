@@ -95,6 +95,41 @@ export type RunEvent =
     }
   | { type: "approval_resolved"; call_id: string; approved: boolean }
 
+export type Role = "admin" | "viewer"
+
+export interface Me {
+  name: string
+  role: Role
+}
+
+export interface TokenMeta {
+  name: string
+  role: Role
+  created_at: string
+  last_used: string | null
+  revoked: boolean
+}
+
+export interface CreatedToken {
+  name: string
+  role: Role
+  /** Shown exactly once — never retrievable again. */
+  token: string
+}
+
+export interface SecretMeta {
+  name: string
+  provider: string
+  created_at: string | null
+}
+
+export interface LogLine {
+  ts: string
+  level: "ERROR" | "WARN" | "INFO" | "DEBUG" | "TRACE"
+  target: string
+  message: string
+}
+
 export function scheduleLabel(s: CronSchedule): string {
   if ("Cron" in s) return s.Cron
   if ("Human" in s) return s.Human

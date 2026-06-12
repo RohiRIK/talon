@@ -43,7 +43,10 @@ const MAGIC: &[u8; 8] = b"TALONMK1";
 pub struct MasterKey([u8; KEY_LEN]);
 
 impl MasterKey {
-    pub(crate) fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
+    /// Construct from raw key bytes. Intended for tests and embedders that
+    /// manage key material themselves — production flows go through
+    /// [`MasterKeyStore::bootstrap`]/[`MasterKeyStore::unlock`].
+    pub fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
         Self(bytes)
     }
 

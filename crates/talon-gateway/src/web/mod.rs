@@ -14,6 +14,7 @@ pub mod approvals;
 pub mod flows;
 pub mod handlers;
 pub mod logs;
+pub mod secrets;
 #[cfg(feature = "web-ui")]
 pub mod serve_ui;
 pub mod sse;
@@ -67,6 +68,7 @@ pub struct WebState {
     pub tokens: TokenStore,
     pub log_ring: Option<Arc<logs::LogRing>>,
     pub metrics_render: Option<MetricsRender>,
+    pub secret_vault: Option<Arc<talon_secrets::BuiltinVault>>,
     token: Arc<str>,
 }
 
@@ -100,8 +102,15 @@ impl WebState {
             tokens,
             log_ring: None,
             metrics_render: None,
+            secret_vault: None,
             token: Arc::from(token),
         })
+    }
+
+    /// Attach the unlocked builtin vault (criterion 15).
+    pub fn with_secret_vault(mut self, vault: Arc<talon_secrets::BuiltinVault>) -> Self {
+        self.secret_vault = Some(vault);
+        self
     }
 
     /// Attach the live log ring (criterion 20).
@@ -140,6 +149,8 @@ pub fn api_router(state: WebState) -> Router {
         .route("/me", get(me))
         .route("/tokens", get(tokens::list).post(tokens::create))
         .route("/tokens/{name}", delete(tokens::revoke))
+        .route("/secrets", get(secrets::list).post(secrets::create))
+        .route("/secrets/{name}", delete(secrets::remove))
         .route("/logs/tail", get(logs::tail))
         .layer(middleware::from_fn_with_state(state.clone(), require_token))
         .layer(middleware::from_fn(request_id))
@@ -202,7 +213,11 @@ async fn require_token(State(state): State<WebState>, mut req: Request, next: Ne
         .and_then(|v| v.strip_prefix("Bearer "))
         .map(str::to_string);
 
-    let query_token = if req.uri().path().ends_with("/events") {
+    // SSE endpoints only — EventSource cannot set headers. Both paths are
+    // exempt from URI logging (same leak-vector rule as /events).
+    let sse_path =
+        req.uri().path().ends_with("/events") || req.uri().path().ends_with("/logs/tail");
+    let query_token = if sse_path {
         req.uri().query().and_then(|q| {
             q.split('&')
                 .find_map(|pair| pair.strip_prefix("token=").map(str::to_string))
@@ -1133,6 +1148,115 @@ mod tests {
         let text = String::from_utf8_lossy(&first);
         assert!(text.contains("important error line"), "got: {text}");
         assert!(!text.contains("noisy debug line"), "debug filtered: {text}");
+    }
+
+    // ── Secrets API (criterion 15) ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn secrets_crud_never_returns_a_value() {
+        use talon_secrets::{BuiltinVault, MasterKey};
+
+        // make_state's DB isn't reachable here; build a state with a vault on
+        // its own in-memory DB (the API only touches the vault).
+        let db = Arc::new(Database::open(":memory:").expect("open"));
+        db.init_schema().await.expect("schema");
+        let vault = Arc::new(BuiltinVault::new(
+            Arc::clone(&db),
+            MasterKey::from_bytes([9u8; 32]),
+        ));
+        let state = make_state().await.with_secret_vault(vault);
+
+        let secret_value = "super-secret-value-451";
+
+        // Create.
+        let resp = app(state.clone())
+            .oneshot(authed(
+                "POST",
+                "/api/v1/secrets",
+                Some(&format!(
+                    r#"{{"name":"STRIPE_KEY","value":"{secret_value}"}}"#
+                )),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let created = body_json(resp).await;
+        assert!(
+            !created.to_string().contains(secret_value),
+            "create response must not echo the value"
+        );
+        assert_eq!(created["reference"], "{{secret:STRIPE_KEY}}");
+
+        // List: metadata only.
+        let resp = app(state.clone())
+            .oneshot(authed("GET", "/api/v1/secrets", None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let list = body_json(resp).await;
+        assert_eq!(list.as_array().expect("array").len(), 1);
+        assert_eq!(list[0]["name"], "STRIPE_KEY");
+        assert!(
+            !list.to_string().contains(secret_value),
+            "list must not contain values"
+        );
+
+        // Bad names rejected.
+        let resp = app(state.clone())
+            .oneshot(authed(
+                "POST",
+                "/api/v1/secrets",
+                Some(r#"{"name":"has space","value":"v"}"#),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        // Viewer cannot mutate (global role gate).
+        let viewer = state
+            .tokens
+            .create("ro2", TokenRole::Viewer)
+            .await
+            .expect("create");
+        let resp = app(state.clone())
+            .oneshot(with_token(
+                "POST",
+                "/api/v1/secrets",
+                &viewer,
+                Some(r#"{"name":"X","value":"v"}"#),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        // Delete.
+        let resp = app(state.clone())
+            .oneshot(authed("DELETE", "/api/v1/secrets/STRIPE_KEY", None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        let resp = app(state)
+            .oneshot(authed("DELETE", "/api/v1/secrets/STRIPE_KEY", None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn secrets_api_without_vault_is_actionable_503() {
+        let state = make_state().await;
+        let resp = app(state)
+            .oneshot(authed("GET", "/api/v1/secrets", None))
+            .await
+            .expect("response");
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = body_json(resp).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .expect("error")
+                .contains("talon init")
+        );
     }
 
     // ── token_eq ────────────────────────────────────────────────────────────

@@ -1,10 +1,16 @@
 import type {
+  CreatedToken,
   CronRun,
   GraphResponse,
   JobView,
+  LogLine,
+  Me,
   PendingApproval,
   PlanResponse,
+  Role,
   RunEvent,
+  SecretMeta,
+  TokenMeta,
 } from "./types"
 
 const TOKEN_KEY = "talon_api_token"
@@ -68,6 +74,34 @@ export const api = {
   listApprovals: () => request<PendingApproval[]>("GET", "/approvals"),
   resolveApproval: (callId: string, approve: boolean) =>
     request<unknown>("POST", `/approvals/${callId}`, { approve }),
+  me: () => request<Me>("GET", "/me"),
+  listTokens: () => request<TokenMeta[]>("GET", "/tokens"),
+  createToken: (name: string, role: Role) =>
+    request<CreatedToken>("POST", "/tokens", { name, role }),
+  revokeToken: (name: string) =>
+    request<void>("DELETE", `/tokens/${encodeURIComponent(name)}`),
+  listSecrets: () => request<SecretMeta[]>("GET", "/secrets"),
+  createSecret: (name: string, value: string) =>
+    request<{ name: string; reference: string }>("POST", "/secrets", {
+      name,
+      value,
+    }),
+  deleteSecret: (name: string) =>
+    request<void>("DELETE", `/secrets/${encodeURIComponent(name)}`),
+}
+
+/**
+ * Validate a candidate token BEFORE persisting it (criterion 7): a bad token
+ * must produce an inline error and no localStorage write.
+ */
+export async function validateToken(candidate: string): Promise<Me> {
+  const resp = await fetch("/api/v1/me", {
+    headers: { authorization: `Bearer ${candidate}` },
+  })
+  if (!resp.ok) {
+    throw new ApiError(resp.status, "invalid token")
+  }
+  return (await resp.json()) as Me
 }
 
 /// SSE feed. EventSource cannot set headers — the server accepts ?token= on
@@ -81,6 +115,24 @@ export function subscribeEvents(onEvent: (ev: RunEvent) => void): () => void {
       onEvent(JSON.parse(msg.data) as RunEvent)
     } catch {
       // Malformed frame — skip; the next snapshot fetch reconciles.
+    }
+  }
+  return () => source.close()
+}
+
+/// Live log tail (criterion 20). Same ?token= rule as the run-event feed.
+export function subscribeLogs(
+  minLevel: string,
+  onLine: (line: LogLine) => void,
+): () => void {
+  const source = new EventSource(
+    `/api/v1/logs/tail?token=${encodeURIComponent(getToken())}&level=${encodeURIComponent(minLevel)}`,
+  )
+  source.onmessage = (msg) => {
+    try {
+      onLine(JSON.parse(msg.data) as LogLine)
+    } catch {
+      // Malformed frame — skip.
     }
   }
   return () => source.close()

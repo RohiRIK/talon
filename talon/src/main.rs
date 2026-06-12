@@ -952,11 +952,17 @@ impl JobRunner for TalonJobRunner {
 /// register only when their cargo feature is compiled in AND their
 /// `[secrets.*]` config section exists — otherwise the scheme stays
 /// unregistered and refs fail with a typed unknown-scheme error.
-async fn build_secret_resolver(db: Option<Arc<Database>>) -> Arc<talon_secrets::SecretResolver> {
+async fn build_secret_resolver(
+    db: Option<Arc<Database>>,
+) -> (
+    Arc<talon_secrets::SecretResolver>,
+    Option<Arc<talon_secrets::BuiltinVault>>,
+) {
     use talon_secrets::{BuiltinVault, EnvProvider, MasterKeyStore, OsKeychain, SecretResolver};
 
     let mut resolver = SecretResolver::new();
     resolver.register(Arc::new(EnvProvider));
+    let mut vault_handle = None;
 
     if let (Some(db), Ok(home)) = (db, talon_home()) {
         let keychain = OsKeychain;
@@ -966,7 +972,12 @@ async fn build_secret_resolver(db: Option<Arc<Database>>) -> Arc<talon_secrets::
                 let env_value = std::env::var(talon_secrets::ENV_VAR).ok();
                 match key_store.unlock(env_value.as_deref(), None) {
                     Ok(master) => {
-                        resolver.register(Arc::new(BuiltinVault::new(db, master)));
+                        // One vault, two consumers: the resolver (job refs)
+                        // and the web console secrets API.
+                        let vault = Arc::new(BuiltinVault::new(db, master));
+                        resolver
+                            .register(Arc::clone(&vault) as Arc<dyn talon_secrets::SecretProvider>);
+                        vault_handle = Some(vault);
                         tracing::info!("builtin secret vault unlocked");
                     }
                     Err(e) => tracing::warn!(
@@ -996,7 +1007,7 @@ async fn build_secret_resolver(db: Option<Arc<Database>>) -> Arc<talon_secrets::
         tracing::info!("aws secrets manager provider registered (secret://aws/…)");
     }
 
-    Arc::new(resolver)
+    (Arc::new(resolver), vault_handle)
 }
 
 /// `[secrets]` table from `~/.talon/config.toml`, when readable.
@@ -1092,11 +1103,12 @@ async fn cmd_serve(
     let (event_tx, _) = broadcast::channel::<RunEvent>(EVENT_CHANNEL_CAP);
     let approvals = ApprovalBroker::new();
 
+    let (secret_resolver, secret_vault) = build_secret_resolver(ctx.db.clone()).await;
     let runner = Arc::new(TalonJobRunner {
         ctx: Arc::clone(&ctx),
         approvals: gateway_cfg.api_token.is_some().then(|| approvals.clone()),
         events: Some(event_tx.clone()),
-        resolver: Some(build_secret_resolver(ctx.db.clone()).await),
+        resolver: Some(secret_resolver),
     });
     let scheduler = Scheduler::new(store.clone(), runner)
         .with_tick(Duration::from_secs(tick_secs))
@@ -1124,6 +1136,10 @@ async fn cmd_serve(
             )
             .map_err(|e| anyhow::anyhow!("{e}"))?
             .with_log_ring(log_ring);
+
+            if let Some(vault) = secret_vault {
+                state = state.with_secret_vault(vault);
+            }
 
             // Prometheus recorder (criterion 19): installed once per process;
             // scheduler metrics flow through the `metrics` facade either way.

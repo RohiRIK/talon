@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react"
 import { api, subscribeEvents } from "../api"
+import { useRole } from "../role"
 import type { PendingApproval } from "../types"
 
 export function Approvals() {
+  const role = useRole()
   const [pending, setPending] = useState<PendingApproval[]>([])
   const [error, setError] = useState("")
 
@@ -58,14 +60,16 @@ export function Approvals() {
               </span>
             </div>
             <pre>{JSON.stringify(p.args, null, 2)}</pre>
-            <div className="row">
-              <button className="primary" onClick={() => resolve(p.call_id, true)}>
-                ✅ allow
-              </button>
-              <button className="danger" onClick={() => resolve(p.call_id, false)}>
-                ❌ deny
-              </button>
-            </div>
+            {role === "admin" && (
+              <div className="row">
+                <button className="primary" onClick={() => resolve(p.call_id, true)}>
+                  ✅ allow
+                </button>
+                <button className="danger" onClick={() => resolve(p.call_id, false)}>
+                  ❌ deny
+                </button>
+              </div>
+            )}
           </div>
         ))
       )}

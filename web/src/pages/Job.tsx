@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { api, humanizeSince, subscribeEvents } from "../api"
+import { useRole } from "../role"
 import type { CronRun, JobView } from "../types"
 import { jobLabel, scheduleLabel } from "../types"
 
@@ -47,6 +48,7 @@ function RunRow({ run }: { run: CronRun }) {
 }
 
 export function JobDetail({ id }: { id: string }) {
+  const role = useRole()
   const [job, setJob] = useState<JobView | null>(null)
   const [runs, setRuns] = useState<CronRun[]>([])
   const [error, setError] = useState("")
@@ -148,30 +150,32 @@ export function JobDetail({ id }: { id: string }) {
             </tr>
           </tbody>
         </table>
-        <div className="row" style={{ marginTop: 12 }}>
-          <button onClick={() => api.trigger(job.id).catch(() => {})}>
-            ▶ run now
-          </button>
-          <button
-            onClick={() =>
-              api.setEnabled(job.id, !job.enabled).then(refresh)
-            }
-          >
-            {job.enabled ? "disable" : "enable"}
-          </button>
-          <button
-            className="danger"
-            onClick={() => {
-              if (confirm(`Delete job "${jobLabel(job)}"?`)) {
-                api.deleteJob(job.id).then(() => {
-                  window.location.hash = "#/"
-                })
+        {role === "admin" && (
+          <div className="row" style={{ marginTop: 12 }}>
+            <button onClick={() => api.trigger(job.id).catch(() => {})}>
+              ▶ run now
+            </button>
+            <button
+              onClick={() =>
+                api.setEnabled(job.id, !job.enabled).then(refresh)
               }
-            }}
-          >
-            delete
-          </button>
-        </div>
+            >
+              {job.enabled ? "disable" : "enable"}
+            </button>
+            <button
+              className="danger"
+              onClick={() => {
+                if (confirm(`Delete job "${jobLabel(job)}"?`)) {
+                  api.deleteJob(job.id).then(() => {
+                    window.location.hash = "#/"
+                  })
+                }
+              }}
+            >
+              delete
+            </button>
+          </div>
+        )}
       </div>
 
       <h3>Run History</h3>

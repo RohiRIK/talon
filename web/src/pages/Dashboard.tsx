@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { api, humanizeSince, humanizeUntil, subscribeEvents } from "../api"
+import { useRole } from "../role"
 import type { JobView } from "../types"
 import { jobLabel, scheduleLabel } from "../types"
 
@@ -10,6 +11,7 @@ function statusBadge(job: JobView) {
 }
 
 export function Dashboard() {
+  const role = useRole()
   const [jobs, setJobs] = useState<JobView[]>([])
   const [error, setError] = useState("")
 
@@ -72,39 +74,41 @@ export function Dashboard() {
                 <td className="muted">{humanizeSince(job.last_run)}</td>
                 <td>{statusBadge(job)}</td>
                 <td>
-                  <div className="row">
-                    <button
-                      onClick={() =>
-                        api.trigger(job.id).catch((e) => setError(String(e)))
-                      }
-                      title="run now (does not advance the schedule)"
-                    >
-                      ▶
-                    </button>
-                    <button
-                      onClick={() =>
-                        api
-                          .setEnabled(job.id, !job.enabled)
-                          .then(refresh)
-                          .catch((e) => setError(String(e)))
-                      }
-                    >
-                      {job.enabled ? "disable" : "enable"}
-                    </button>
-                    <button
-                      className="danger"
-                      onClick={() => {
-                        if (confirm(`Delete job "${jobLabel(job)}"?`)) {
+                  {role === "admin" && (
+                    <div className="row">
+                      <button
+                        onClick={() =>
+                          api.trigger(job.id).catch((e) => setError(String(e)))
+                        }
+                        title="run now (does not advance the schedule)"
+                      >
+                        ▶
+                      </button>
+                      <button
+                        onClick={() =>
                           api
-                            .deleteJob(job.id)
+                            .setEnabled(job.id, !job.enabled)
                             .then(refresh)
                             .catch((e) => setError(String(e)))
                         }
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
+                      >
+                        {job.enabled ? "disable" : "enable"}
+                      </button>
+                      <button
+                        className="danger"
+                        onClick={() => {
+                          if (confirm(`Delete job "${jobLabel(job)}"?`)) {
+                            api
+                              .deleteJob(job.id)
+                              .then(refresh)
+                              .catch((e) => setError(String(e)))
+                          }
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
