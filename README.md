@@ -1,5 +1,7 @@
 # Talon
 
+![Talon — single-binary AI agent and workflow automation platform](docs/assets/talon-banner.png)
+
 > A fully native Rust AI agent. Single binary. Multi-channel. Persistent cross-project memory.
 
 [![CI](https://github.com/rohirikman/talon/actions/workflows/ci.yml/badge.svg)](https://github.com/rohirikman/talon/actions)
@@ -51,7 +53,12 @@ cargo install talon
 - **WASM plugins** — hot-reload any language that compiles to `.wasm`; no restart required
 - **MCP client** — every Claude Code MCP tool plugs straight in
 - **Cron scheduling** — schedule LLM agents to run on a cron expression, stored in SQLite
-- **Web console** (`web-ui` feature) — embedded SPA at `/ui`: job dashboard, execution graph with per-run failure status, AI flow builder (NL → DAG of jobs + scope grant box), approvals inbox over SSE — Jenkins + n8n for AI agents, in the same single binary
+- **Web console** (`web-ui` feature) — embedded SPA at `/ui`: job dashboard, editable execution graph (drag dependencies, live run animation), AI flow builder (NL → DAG of jobs + scope grant box), approvals inbox, secrets/tokens/logs pages — Jenkins + n8n for AI agents, in the same single binary
+- **Encrypted secret vault** — `{{secret:NAME}}` in job prompts resolves just-in-time; values are AES-256-GCM envelope-encrypted in `talon.db`, master key behind the OS keychain / passphrase / `TALON_MASTER_KEY`; resolved values are scrubbed from every log, run record, and SSE frame. External read-only providers behind features: HashiCorp Vault (`vault`) and AWS Secrets Manager (`aws-secrets`)
+- **Named API tokens with roles** — `talon token create NAME --role admin|viewer`; SHA-256-hashed at rest, revocable, viewer = read-only; every mutating API call lands in the audit log with a token fingerprint
+- **Webhook triggers** — `POST /hooks/{id}`: HMAC-SHA256-signed, replay-protected, rate-limited; the payload reaches the agent as context — event-driven runs, not just cron
+- **Run reliability** — per-job retry with exponential backoff (`retry_max`) and an `on_failure` error-handler job; every attempt recorded with provenance (`cron` / `manual` / `webhook` / `failure`)
+- **Observability** — JSON file logs with daily rotation, job/run/request correlation ids, token-protected Prometheus `/metrics`, live log tail in the console, and opt-in OTLP trace export (`otel` feature)
 - **Semantic search** (optional feature) — `fastembed` ONNX embeddings + RRF fusion with FTS5
 - **Self-evolving skills** (v2) — DSPy+GEPA Python sidecar improves skill prompts over time
 
@@ -87,37 +94,40 @@ cargo install talon
 └─────────────────────────────────────────────────────────┘
 ```
 
-**6-crate Cargo workspace:**
+**7-crate Cargo workspace:**
 
 | Crate | Role |
 |-------|------|
 | `talon` | Binary entrypoint, CLI, config |
-| `talon-core` | Agent loop, approval membrane, events |
+| `talon-core` | Agent loop, approval membrane, scheduler, events |
 | `talon-llm` | `LlmProvider` trait, OpenAI + Anthropic impls |
-| `talon-memory` | SQLite+FTS5, sessions, context assembly |
+| `talon-memory` | SQLite+FTS5, sessions, cron/runs/tokens/webhooks/audit stores |
 | `talon-tools` | File, terminal, web, browser, MCP, delegate tools |
-| `talon-gateway` | CLI/TUI, Telegram, Discord, HTTP adapters |
+| `talon-gateway` | CLI/TUI, Telegram, HTTP adapters, web console API |
+| `talon-secrets` | `SecretProvider` trait, encrypted vault, JIT resolution + redaction |
 | `talon-plugins` | WASM host (wasmtime), skill store, hot-reload |
 
 ---
 
 ## Status
 
-**Pre-alpha — specification phase complete, implementation starting.**
+**Alpha — core platform complete (phases 0–8); subagents and skill evolution remain.**
 
-The full architecture is documented across 65 spec documents in `docs/`. The implementation plan is in [`PLAN.md`](PLAN.md).
+The full architecture is documented across 65+ spec documents in `docs/`. The implementation plan is in [`PLAN.md`](PLAN.md).
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 0 | Foundation — workspace, CI, Docker | **In Progress** |
-| 0.5 | Working prototype — validate core loop | Planned |
-| 1 | Core agent loop — LLM + tool trait + approval | Planned |
-| 2 | Memory — SQLite, FTS5, context assembly | Planned |
-| 3 | Tools Tier 1 — file, terminal, sandbox | Planned |
-| 4 | Gateway — HTTP, CLI/TUI, Telegram | Planned |
-| 5 | Tools Tier 2 — web, browser, MCP | Planned |
-| 6 | Plugins & scheduling — WASM, cron, skills | Planned |
-| 7 | Advanced — subagents, semantic search, Discord | Planned |
+| 0 | Foundation — workspace, CI, Docker | ✅ Done |
+| 0.5 | Working prototype — validate core loop | ✅ Done |
+| 1 | Core agent loop — LLM + tool trait + approval | ✅ Done |
+| 2 | Memory — SQLite, FTS5, context assembly, LTM | ✅ Done |
+| 3 | Tools Tier 1 — file, terminal, sandbox | ✅ Done |
+| 4 | Gateway — HTTP, CLI/TUI, Telegram | ✅ Done |
+| 5 | Tools Tier 2 — web, browser, MCP | ✅ Done |
+| 6 | Plugins & scheduling — WASM, cron, skills | ✅ Done |
+| 7 | Web console — dashboard, graph, flow builder, approvals | ✅ Done |
+| 8 | "Flow Cottage" — secret vault, tokens+roles, webhooks, retry/error handlers, observability, audit | ✅ Done |
+| 9 | Advanced — subagents, skill evolution, Discord | Planned (v2) |
 
 ---
 

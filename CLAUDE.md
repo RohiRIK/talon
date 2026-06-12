@@ -38,6 +38,8 @@ This applies to: Talon's system prompt, tool `schema()` descriptions, `SessionSe
 
 ## Current State
 
+**Phase: 8 ("Flow Cottage") — Complete (2026-06-12).** Web console (Phase 7) + the full secrets/auth/webhooks/reliability/observability layer (Phase 8) shipped on `feat/web-console`. New crate `talon-secrets` (8th workspace member); migrations v1–v10; 721 workspace tests + 49 vault/aws feature tests + 23-check live e2e (`scripts/e2e_smoke.sh`). Key invariants added: secrets are JIT-resolved and scrubbed at every sink (run records, tracing, SSE); the master key exists only behind an unlock credential (keychain / passphrase blob / `TALON_MASTER_KEY`); `/hooks/{id}` is the only unauthenticated endpoint (HMAC-SHA256 is the credential); viewer tokens are read-only; `cron_runs.fired_by` (not `trigger` — SQL keyword) carries provenance.
+
 **Phase: 6 — Complete (2026-06-02).** Phases 0–5 complete (Phase 5: 2026-05-29). `cargo nextest run --workspace` → 591/591 green (3 skipped); talon-plugins wasm e2e (4 tests) green under `--features wasm`.
 Phase 5 added web_search/web_extract (Safe), SubprocessPlugin + MCP client/adapter/config (NeedsApproval), and a feature-gated BrowserTool, all registered in `build_gateway_context` with per-class timeouts.
 **Multi-provider onboarding wizard (2026-06-02, completes deferred 4.19):** `talon init` runs an inquire-driven wizard — multi-select providers from a 12-entry preset catalog, keys stored per-provider in the OS keychain, live `/models` fetch for OpenAI-compatible vendors (built-in lists otherwise), default-model pick, ordered fallback chain written to `[llm]` in config.toml. `resolve_provider` builds a `FallbackProvider` from the chain with env-var fallback. New talon-llm surface: `ModelInfo`/`ModelLister`, `OpenAiCompatProvider`, `LlmConfig`/`ProviderChoice`, `FallbackProvider`. Deferred: 4.24 Telegram live smoke. **Pending verification:** Phase 5 live smoke test (real `web_search` + a real MCP server end-to-end) — code path wired, not yet exercised against the network.
@@ -227,7 +229,9 @@ docker build -t talon:phase-N .
 | 4 | Gateway | ✅ Complete (2026-05-28) | CLI + Telegram + HTTP all functional; 349 tests green |
 | 5 | Tools Tier 2 + MCP | ✅ Complete (2026-05-29) | Tools built + registered; live smoke (real search/MCP) pending |
 | 6 | Plugins + Scheduling | ✅ Complete (2026-06-02) | WASM plugin loads without restart (hot-reload <2s proven in `skill_e2e.rs`); live CLI smoke pending |
-| 7 | Advanced | ⬜ v2 | Parallel subagents, skill evolution |
+| 7 | Web Console | ✅ Complete (2026-06-12, commit 81a1e7a) | `cron_runs` history, `/api/v1` (CRUD+SSE+bearer), embedded React Flow SPA (`web-ui` feature) |
+| 8 | Flow Cottage | ✅ Complete (2026-06-12, commits ddde901→e2798b3) | Secret vault + external providers, named tokens+roles, webhooks (HMAC), retry/error handlers, observability (file logs/metrics/log tail/otel), retention + audit; e2e: `scripts/e2e_smoke.sh` 23/23 — see `plans/talon-improving-flow-cottage.md` (outside repo) |
+| 9 | Advanced | ⬜ v2 | Parallel subagents, skill evolution |
 
 **MVP:** Phases 0–2 + 4. Agent that talks, remembers, reachable via Telegram.
 

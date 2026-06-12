@@ -185,3 +185,20 @@ If you can only ship N phases, this is the order of value:
 | LLM cost for fact extraction | 2.5 | Semantic cache, batch extraction per session | Higher operating cost |
 | chromiumoxide/axum dep conflict | 5 | Use `headless_chrome` crate instead | Blocks browser tool |
 | edition 2024 crate compatibility | 0 | Pin toolchain, track lagging crates | May need workarounds |
+
+---
+
+## Phase 7 + 8 — Web Console & Flow Cottage (completed 2026-06-12)
+
+**Phase 7 (web console):** `cron_runs` per-attempt history (migration v5), `/api/v1` HTTP surface (jobs CRUD, runs, graph, flows plan/commit, approvals, SSE, bearer auth), embedded React 18 + React Flow SPA behind the `web-ui` feature with committed `web/dist`.
+
+**Phase 8 (Flow Cottage, 33 acceptance criteria, plan tracked outside the repo in `plans/talon-improving-flow-cottage.md`):**
+- `talon-secrets` crate — credential-gated master key, AES-256-GCM envelope vault (v6), JIT `{{secret:NAME}}` resolution, process-wide redaction; HashiCorp Vault + AWS Secrets Manager behind `vault`/`aws-secrets` features
+- Named API tokens with admin/viewer roles (v7), `/me`, console login that validates before persisting
+- Observability: JSON file logs, run/request correlation ids, Prometheus `/metrics`, live log tail, `otel` OTLP feature
+- Console pages: Secrets, Logs, Tokens; graph became an editor (drag `context_from` edges, server-side cycle rejection)
+- Webhook triggers (v8): HMAC-SHA256 public endpoint, replay window, per-hook rate limit, payload → agent context
+- Reliability (v9): per-job retry with backoff, `on_failure` handler jobs (cascade-proof), run provenance (`fired_by`, `attempt`)
+- Hardening (v10): run-history retention, audit log with token fingerprints, CI lean-default-tree + feature-test jobs
+
+Exit gates: 721/721 workspace tests · 49/49 feature suite · clippy `-D warnings` · `cargo audit` clean · `scripts/e2e_smoke.sh` 23/23 against a live daemon.
